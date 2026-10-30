@@ -44,20 +44,24 @@ prostate-mri-pipeline/
 ### Módulo 1: Ingesta DICOM, Filtrado y Corregistro (`src/ingest_dicom.py`)
 
 1. **Clasificación Determinista de Series:**
-   - **T2W Axial:** Secuencia anatómica de alta resolución. Validar orientación axial mediante el producto vectorial de los cosenos directores en `ImageOrientationPatient (0020,0037)`: vector normal `n = row × col`. Si `|n_z| > 0.80`, la serie es axial.
+   - **T2W Axial:** Secuencia anatómica de alta resolución. Validar orientación axial mediante el producto vectorial de los cosenos directores en `ImageOrientationPatient (0020,0037)`:
+     
+     $$\vec{n} = \vec{r}_{\text{row}} \times \vec{r}_{\text{col}}$$
+     
+     Si $|n_z| > 0.80$, la serie es axial.
    - **Mapa ADC:** Identificar series con `"adc"` en `SeriesDescription`, ignorando capturas secundarias RGB (`"color"`, `"fusion"`, `"eadc"`).
-   - **DWI de Alto Valor b (b ≥ 1400 s/mm²):** Identificar series de difusión (`"dw_synthetic"`, `"focus"`). En el GE SIGNA PRIME, la serie sintética apila múltiples adquisiciones por corte anatómico (ej. 64 instancias para 32 posiciones de corte). Deben agrupar las instancias por `ImagePositionPatient (0020,0032)` y seleccionar el corte correspondiente al mayor valor b.
+   - **DWI de Alto Valor $b$ ($b \ge 1400\text{ s/mm}^2$):** Identificar series de difusión (`"dw_synthetic"`, `"focus"`). En el GE SIGNA PRIME, la serie sintética apila múltiples adquisiciones por corte anatómico (ej. 64 instancias para 32 posiciones de corte). Deben agrupar las instancias por `ImagePositionPatient (0020,0032)` y seleccionar el corte correspondiente al mayor valor $b$.
 
 2. **Lectura de Tags de Difusión:**
    - Tag estándar DICOM: `(0018, 9087)` (*Diffusion b-value*).
-   - Tag privado GE: `(0043, 1039)` → el valor b se extrae del primer entero módulo 10000.
+   - Tag privado GE: `(0043, 1039)` $\rightarrow$ el valor $b$ se extrae del primer entero módulo 10000.
 
 3. **Armonización de Unidades Físicas de ADC:**
-   El estándar PI-RADS v2.1 y los informes de INTECNUS expresan el ADC en `[10⁻⁶ mm²/s]`. Según el fabricante o exportador, el mapa crudo puede venir en:
-   - `mm²/s` (mediana ~0.0012) → multiplicar por 10⁶.
-   - `10⁻³ mm²/s` (mediana ~1.2) → multiplicar por 10³.
-   - `10⁻⁶ mm²/s` (mediana ~1200) → escala nativa (factor 1.0).
-   - `10⁻⁹ mm²/s` (mediana ~1200000) → multiplicar por 10⁻³.
+   El estándar PI-RADS v2.1 y los informes de INTECNUS expresan el ADC en $[10^{-6}\text{ mm}^2/\text{s}]$. Según el fabricante o exportador, el mapa crudo puede venir en:
+   - $\text{mm}^2/\text{s}$ (mediana $\sim 0.0012$) $\rightarrow$ multiplicar por $10^6$.
+   - $10^{-3}\text{ mm}^2/\text{s}$ (mediana $\sim 1.2$) $\rightarrow$ multiplicar por $10^3$.
+   - $10^{-6}\text{ mm}^2/\text{s}$ (mediana $\sim 1200$) $\rightarrow$ escala nativa (factor $1.0$).
+   - $10^{-9}\text{ mm}^2/\text{s}$ (mediana $\sim 1200000$) $\rightarrow$ multiplicar por $10^{-3}$.
 
 4. **Corregistro Geométrico Inter-Secuencia (`SimpleITK`):**
    Las secuencias de difusión focalizada (`Ax FOCUS`) y dinámicas de contraste (`LAVA`/`DISCO`) tienen distinta resolución y FOV respecto al T2W axial. Deben proyectar el mapa ADC, el DWI y el DCE a la grilla geométrica exacta del T2W axial utilizando `sitk.ResampleImageFilter` (interpolación lineal para imágenes continuas y default pixel value = 0.0).
@@ -78,7 +82,7 @@ prostate-mri-pipeline/
 2. **Inferencia:**
    - Cargar la red neuronal y las transformaciones predefinidas en `inference.json` o `inference.yaml`.
    - Ejecutar inferencia sobre el volumen NIfTI `t2w_axial.nii.gz`.
-   - Conmutar dinámicamente entre GPU (`cuda`) y CPU según la memoria VRAM disponible (en workstations con menos de 4 GB de VRAM libres, forzar CPU para evitar fallos de memoria).
+   - Conmutar dinámicamente entre GPU (`cuda`) y CPU según la memoria VRAM disponible (en workstations con $<4\text{ GB}$ de VRAM libres, forzar CPU para evitar fallos de memoria).
 3. **Salida y Etiquetas Anatómicas:**
    - Generar `prostate_mask.nii.gz` con la misma orientación, origen y espaciado que el T2W axial.
    - **Etiqueta 1:** Zona Central / Transición (TZ).
@@ -91,61 +95,55 @@ prostate-mri-pipeline/
 
 1. **Planimetría Automática 3D (Volumetría Real por Conteo de Vóxeles):**
 
-   ```text
-   V_vóxel = N_vóxeles × (Δx · Δy · Δz) × 10⁻³  [cc o cm³]
-   ```
+   $$V_{\text{vóxel}} = N_{\text{vóxeles}} \times (\Delta x \cdot \Delta y \cdot \Delta z) \times 10^{-3}\text{ [cc o cm}^3\text{]}$$
 
    - **Justificación Asistencial:** Automatiza la planimetría corte a corte en segundos. Aporta máxima reproducibilidad y precisión diagnóstica en:
      * Glándulas grandes o asimétricas con hiperplasia prostática benigna (adenomas con lóbulo medio prominente donde el elipsoide falla entre un 20% y 30%).
-     * Pacientes con densidades de PSA en zona gris cercanas al punto de corte (0.12 - 0.18 ng/mL/cc).
+     * Pacientes con densidades de PSA en zona gris cercanas al punto de corte ($0.12 - 0.18\text{ ng/mL/cc}$).
      * Seguimiento longitudinal y vigilancia activa (donde la variación volumétrica debe ser real y reproducible entre controles).
    - Calcular volúmenes parciales y biomarcadores zonales:
-     * Volumen de la Zona de Transición (`V_TZ`).
-     * Volumen de la Zona Periférica (`V_PZ`).
-     * Volumen total de la glándula: `V_total = V_TZ + V_PZ`.
-     * **Relación Transición / Periférica:** `Ratio_TZ_PZ = V_TZ / V_PZ`.
-     * Índice de Hiperplasia Benigna: `V_TZ / V_total`.
+     * Volumen de la Zona de Transición ($V_{\text{TZ}}$).
+     * Volumen de la Zona Periférica ($V_{\text{PZ}}$).
+     * Volumen total de la glándula ($V_{\text{total}} = V_{\text{TZ}} + V_{\text{PZ}}$).
+     * **Relación Transición / Periférica:** $\text{Ratio}_{\text{TZ/PZ}} = V_{\text{TZ}} / V_{\text{PZ}}$.
+     * Índice de Hiperplasia Benigna: $V_{\text{TZ}} / V_{\text{total}}$.
 
 2. **Diámetros Clínicos en Planos Anatómicos Estrictos:**
    Para asegurar que las mediciones del software sean directamente comparables con los calipers colocados manualmente por el médico en la estación de trabajo:
    - **Plano Axial T2W:**
-     * `DT`: Diámetro Transverso máximo (ancho de izquierda a derecha, Eje X, en mm).
-     * `DAP`: Diámetro Antero-Posterior máximo (profundidad ventral a dorsal, Eje Y, en mm).
+     * $\text{DT}$: Diámetro Transverso máximo (ancho de izquierda a derecha, Eje X, en mm).
+     * $\text{DAP}$: Diámetro Antero-Posterior máximo (profundidad ventral a dorsal, Eje Y, en mm).
    - **Plano Sagital T2W (corte medio sagital):**
-     * `DCC`: Diámetro Cráneo-Caudal máximo (altura desde la base vesical al ápex prostático, Eje Z, en mm).
+     * $\text{DCC}$: Diámetro Cráneo-Caudal máximo (altura desde la base vesical al ápex prostático, Eje Z, en mm).
 
-   Fórmula del elipsoide clínico:
+   Calcular el volumen del elipsoide clínico:
 
-   ```text
-   V_elipsoide = DAP × DT × DCC × (π / 6) × 10⁻³  [cc]
-   ```
+   $$V_{\text{elipsoide}} = \text{DAP} \times \text{DT} \times \text{DCC} \times \frac{\pi}{6} \times 10^{-3}\text{ [cc]}$$
 
-   Discrepancia porcentual respecto a la planimetría real:
+   Cuantificar la discrepancia porcentual respecto a la planimetría real:
 
-   ```text
-   Δ% = (|V_vóxel - V_elipsoide| / V_vóxel) × 100%
-   ```
+   $$\Delta\% = \frac{|V_{\text{vóxel}} - V_{\text{elipsoide}}|}{V_{\text{vóxel}}} \times 100\%$$
 
 3. **Biomarcadores de PSA:**
-   - **Densidad de PSA Global (PSAD):**
-     ```text
-     PSAD = PSA [ng/mL] / V_total [cc]
-     ```
-     * Normal: `PSAD < 0.15 ng/mL/cc`.
-     * Alerta clínica: `PSAD ≥ 0.15 ng/mL/cc` (alta sospecha de cáncer significativo).
-   - **Densidad de PSA en Zona de Transición (PSAD-TZ):**
-     ```text
-     PSAD_TZ = PSA [ng/mL] / V_TZ [cc]
-     ```
-     Biomarcador diferencial fundamental: un PSA elevado acompañado de un PSAD_TZ bajo se correlaciona con adenoma benigno voluminoso y no con neoplasia maligna oculta.
+   - **Densidad de PSA Global ($\text{PSAD}$):**
 
-4. **Detección Focalizada de Candidatos en Difusión (b ≥ 1400 y ADC):**
+     $$\text{PSAD} = \frac{\text{PSA [ng/mL]}}{V_{\text{total}}\text{ [cc]}}$$
+
+     * Normal: $\text{PSAD} < 0.15\text{ ng/mL/cc}$.
+     * Alerta clínica: $\text{PSAD} \ge 0.15\text{ ng/mL/cc}$ (alta sospecha de cáncer significativo).
+   - **Densidad de PSA en Zona de Transición ($\text{PSAD}_{\text{TZ}}$):**
+
+     $$\text{PSAD}_{\text{TZ}} = \frac{\text{PSA [ng/mL]}}{V_{\text{TZ}}\text{ [cc]}}$$
+
+     Biomarcador diferencial fundamental: un PSA elevado acompañado de un $\text{PSAD}_{\text{TZ}}$ bajo se correlaciona con adenoma benigno voluminoso y no con neoplasia maligna oculta.
+
+4. **Detección Focalizada de Candidatos en Difusión ($b \ge 1400$ y ADC):**
    *Nota Clínica:* El promedio global de ADC en toda la zona periférica no aporta valor diagnóstico. El software debe individualizar los focos sospechosos para que el médico los confirme visualmente:
-   - Cruzar la hiperintensidad en difusión de alto b (`b ≥ 1400 s/mm²`) con la restricción marcada en el mapa ADC (`50 < ADC < 800 × 10⁻⁶ mm²/s`) enmascarado en la Zona Periférica.
-   - Aplicar filtrado morfológico 3D (`scipy.ndimage`) y segmentar componentes conexas con volumen `≥ 0.15 cc` (150 mm³).
+   - Cruzar la hiperintensidad en difusión de alto $b$ ($b \ge 1400\text{ s/mm}^2$) con la restricción marcada en el mapa ADC ($50 < \text{ADC} < 800\times 10^{-6}\text{ mm}^2/\text{s}$) enmascarado en la Zona Periférica.
+   - Aplicar filtrado morfológico 3D (`scipy.ndimage`) y segmentar componentes conexas con volumen $\ge 0.15\text{ cc}$ ($150\text{ mm}^3$).
    - Por cada candidato detectado (`FOCO_1`, `FOCO_2`), reportar sus métricas individuales:
-     * Volumen focal (`V_foco` en cc) y diámetro máximo (mm).
-     * ADC medio puntual y percentil 10 (`ADC P10` en `10⁻⁶ mm²/s`).
+     * Volumen focal ($V_{\text{foco}}$ en cc) y diámetro máximo (mm).
+     * ADC medio puntual y percentil 10 ($\text{ADC}_{\text{P10}}$ en $10^{-6}\text{ mm}^2/\text{s}$).
      * Localización topográfica 3D (Base / Región Media / Ápex, Derecha / Izquierda / Línea Media, Anterior / Posterolateral).
 
 5. **Criterio de Desempate PI-RADS v2.1 con Contraste Dinámico (DCE) [Opcional]:**
@@ -159,15 +157,15 @@ prostate-mri-pipeline/
 
 ### Módulo 4: Generación de Reporte Clínico Multipanel (`src/report_generator.py`)
 
-Diseñar una figura de una página en Matplotlib con `GridSpec` (3 filas × 4 columnas) con estética PACS:
+Diseñar una figura de una página en Matplotlib con `GridSpec` (3 filas $\times$ 4 columnas) con estética PACS:
 1. **Header Institucional:** Banner de Fundación INTECNUS, ID del paciente, datos del resonador GE SIGNA PRIME 3.0T, valor de PSA y badge visual de alerta de PSAD.
 2. **Paneles Anatómicos (T2W):**
-   - Axial, Sagital y Coronal centrados en el ROI prostático (recorte automático con margen de ~18 mm).
-   - **Corrección de aspect ratio físico:** en cortes sagitales y coronales, fijar `aspect = Δz / Δx` para evitar distorsión vertical.
+   - Axial, Sagital y Coronal centrados en el ROI prostático (recorte automático con margen de $\sim 18\text{ mm}$).
+   - **Corrección de aspect ratio físico:** en cortes sagitales y coronales, fijar $\text{aspect} = \Delta z / \Delta x$ para evitar distorsión vertical.
    - Superposición de contornos zonales: TZ en cian, PZ en verde y lesión sospechosa en rojo.
 3. **Paneles Funcionales y Cuantitativos:**
-   - Mapa térmico de ADC (`magma`) con barra de color en `[10⁻⁶ mm²/s]`.
-   - Corte de DWI de alto b (`b ≥ 1400 s/mm²`) mostrando la hiperintensidad focal.
+   - Mapa térmico de ADC (`magma`) con barra de color en $[10^{-6}\text{ mm}^2/\text{s}]$.
+   - Corte de DWI de alto $b$ ($b \ge 1400$) mostrando la hiperintensidad focal.
    - Si se cuenta con `--dce`: Panel de fase arterial precoz dinámica mostrando el realce focal tumoral precoz (*wash-in*).
    - Histograma cuantitativo comparando las distribuciones de ADC en PZ normal vs. TZ vs. foco tumoral, con línea vertical punteada en el umbral 800.
 4. **Informe Estructurado Institucional y Texto Copy-Paste:**
@@ -202,7 +200,7 @@ Diseñar una figura de una página en Matplotlib con `GridSpec` (3 filas × 4 co
    ```
 
 5. **Exportaciones Requeridas:**
-   - `clinical_report.png` (resolución ≥ 200 dpi para vista rápida).
+   - `clinical_report.png` (resolución $\ge 200\text{ dpi}$ para vista rápida).
    - `clinical_report.pdf` (vectorial de una página para incorporación a historia clínica digital).
    - `clinical_report_template.txt` (texto plano con el bloque formateado listo para copiar y pegar en la plantilla de informe médico).
    - `prostate_seg.dcm` [Opcional - Hito Integrador]: Objeto estándar DICOM SEG (`pydicom-seg`) para importar la segmentación al PACS.
@@ -260,13 +258,13 @@ python run_pipeline.py \
 
 * **Semana 1: Entorno, Lectura DICOM y Corregistro Espacial**
   - Configurar el entorno virtual con `requirements.txt`.
-  - Implementar en `src/ingest_dicom.py` la lectura de tags, ordenamiento de cortes, separación del valor b sintético de GE, armonización de escala de ADC y el remuestreo hacia T2W con SimpleITK.
+  - Implementar en `src/ingest_dicom.py` la lectura de tags, ordenamiento de cortes, separación del valor $b$ sintético de GE, armonización de escala de ADC y el remuestreo hacia T2W con SimpleITK.
 * **Semana 2: Segmentación con Deep Learning (MONAI) y Volumetría 3D**
   - Implementar en `src/segmentation.py` la inferencia con el bundle `prostate_mri_anatomy`.
-  - Implementar en `src/morphometry.py` el cálculo de planimetría real por conteo de vóxeles (`V_total`, `V_TZ`, `V_PZ`, `Ratio_TZ_PZ`) y la extracción de diámetros ortogonales en planos anatómicos estrictos (Axial DT/DAP, Sagital DCC).
+  - Implementar en `src/morphometry.py` el cálculo de planimetría real por conteo de vóxeles ($V_{\text{total}}$, $V_{\text{TZ}}$, $V_{\text{PZ}}$, $\text{Ratio}_{\text{TZ/PZ}}$) y la extracción de diámetros ortogonales en planos anatómicos estrictos (Axial DT/DAP, Sagital DCC).
 * **Semana 3: Física de Difusión, Focos Sospechosos y Biomarcadores**
-  - Implementar en `src/morphometry.py` el cálculo de `PSAD_total` y `PSAD_TZ`.
-  - Individualizar los candidatos a focos sospechosos cruzando `b ≥ 1400` y `ADC < 800`, extrayendo el ADC medio y ADC P10 puntual de cada foco junto a su topografía para confirmación médica.
+  - Implementar en `src/morphometry.py` el cálculo de $\text{PSAD}_{\text{total}}$ y $\text{PSAD}_{\text{TZ}}$.
+  - Individualizar los candidatos a focos sospechosos cruzando $b \ge 1400$ y $\text{ADC} < 800$, extrayendo el $\text{ADC}$ medio y percentil 10 ($\text{ADC}_{\text{P10}}$) de cada foco junto a su topografía para confirmación médica.
   - Validar los resultados sobre al menos 5 casos locales anonimizados de Fundación INTECNUS.
 * **Semana 4: Reportes Clínicos (Visual, Texto Copy-Paste y DICOM SEG) y Cierre**
   - Implementar en `src/report_generator.py` la figura en Matplotlib (GridSpec) y la exportación de `clinical_report_template.txt` para pegado directo en plantillas de informes.
