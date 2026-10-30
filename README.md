@@ -91,47 +91,54 @@ prostate-mri-pipeline/
 
 ### Módulo 3: Morfometría 3D, Biomarcadores y Difusión (`src/morphometry.py`)
 
-1. **Volumen Real por Conteo de Vóxeles 3D:**
+1. **Planimetría Automática 3D (Volumetría Real por Conteo de Vóxeles):**
    $$V_{\text{vóxel}} = N_{\text{vóxeles}} \times (\Delta x \cdot \Delta y \cdot \Delta z) \times 10^{-3}\text{ [cc o cm}^3\text{]}$$
-   Calcular:
-   - Volumen de la Zona de Transición ($V_{\text{TZ}}$).
-   - Volumen de la Zona Periférica ($V_{\text{PZ}}$).
-   - Volumen total de la glándula ($V_{\text{total}} = V_{\text{TZ}} + V_{\text{PZ}}$).
-   - Índice de Hiperplasia Benigna ($V_{\text{TZ}} / V_{\text{total}}$).
+   - **Justificación Asistencial:** Automatiza la planimetría corte a corte en segundos. Aporta máxima reproducibilidad y precisión diagnóstica en:
+     * Glándulas grandes o asimétricas con hiperplasia prostática benigna (adenomas con lóbulo medio prominente donde el elipsoide falla entre un 20% y 30%).
+     * Pacientes con densidades de PSA en zona gris cercanas al punto de corte ($0.12 - 0.18\text{ ng/mL/cc}$).
+     * Seguimiento longitudinal y vigilancia activa (donde la variación volumétrica debe ser real y reproducible entre controles).
+   - Calcular volúmenes parciales y biomarcadores zonales:
+     * Volumen de la Zona de Transición ($V_{\text{TZ}}$).
+     * Volumen de la Zona Periférica ($V_{\text{PZ}}$).
+     * Volumen total de la glándula ($V_{\text{total}} = V_{\text{TZ}} + V_{\text{PZ}}$).
+     * **Relación Transición / Periférica:** $\text{Ratio}_{\text{TZ/PZ}} = V_{\text{TZ}} / V_{\text{PZ}}$.
+     * Índice de Hiperplasia Benigna: $V_{\text{TZ}} / V_{\text{total}}$.
 
-2. **Diámetros Ortogonales y Auditoría del Elipsoide Clínico:**
-   Extraer los tres diámetros máximos de la máscara total prostática:
-   - $\text{DAP}$: Diámetro Antero-Posterior (Eje Y, en mm).
-   - $\text{DT}$: Diámetro Transverso (Eje X, en mm).
-   - $\text{DCC}$: Diámetro Cráneo-Caudal (Eje Z, en mm).
+2. **Diámetros Clínicos en Planos Anatómicos Estrictos:**
+   Para asegurar que las mediciones del software sean directamente comparables con los calipers colocados manualmente por el médico en la estación de trabajo:
+   - **Plano Axial T2W:**
+     * $\text{DT}$: Diámetro Transverso máximo (ancho de izquierda a derecha, Eje X, en mm).
+     * $\text{DAP}$: Diámetro Antero-Posterior máximo (profundidad ventral a dorsal, Eje Y, en mm).
+   - **Plano Sagital T2W (corte medio sagital):**
+     * $\text{DCC}$: Diámetro Cráneo-Caudal máximo (altura desde la base vesical al ápex prostático, Eje Z, en mm).
    
-   Calcular el volumen aproximado por la fórmula del elipsoide utilizada en la consola de INTECNUS:
+   Calcular el volumen del elipsoide clínico:
    $$V_{\text{elipsoide}} = \text{DAP} \times \text{DT} \times \text{DCC} \times \frac{\pi}{6} \times 10^{-3}\text{ [cc]}$$
    
-   Cuantificar la discrepancia porcentual respecto a la volumetría 3D real:
+   Cuantificar la discrepancia porcentual respecto a la planimetría real:
    $$\Delta\% = \frac{|V_{\text{vóxel}} - V_{\text{elipsoide}}|}{V_{\text{vóxel}}} \times 100\%$$
 
-3. **Densidad de PSA ($\text{PSAD}$):**
-   $$\text{PSAD} = \frac{\text{PSA [ng/mL]}}{V_{\text{total}}\text{ [cc]}}$$
-   - Normal: $\text{PSAD} < 0.15\text{ ng/mL/cc}$.
-   - Alerta clínica: $\text{PSAD} \ge 0.15\text{ ng/mL/cc}$ (alta probabilidad de lesión clínicamente significativa).
+3. **Biomarcadores de PSA:**
+   - **Densidad de PSA Global ($\text{PSAD}$):**
+     $$\text{PSAD} = \frac{\text{PSA [ng/mL]}}{V_{\text{total}}\text{ [cc]}}$$
+     - Normal: $\text{PSAD} < 0.15\text{ ng/mL/cc}$.
+     - Alerta clínica: $\text{PSAD} \ge 0.15\text{ ng/mL/cc}$ (alta sospecha de cáncer significativo).
+   - **Densidad de PSA en Zona de Transición ($\text{PSAD}_{\text{TZ}}$):**
+     $$\text{PSAD}_{\text{TZ}} = \frac{\text{PSA [ng/mL]}}{V_{\text{TZ}}\text{ [cc]}}$$
+     Biomarcador diferencial fundamental: un PSA elevado acompañado de un $\text{PSAD}_{\text{TZ}}$ bajo se correlaciona con adenoma benigno voluminoso y no con neoplasia maligna oculta.
 
-4. **Detección y Topografía de Focos en Zona Periférica (PZ):**
-   - Enmascarar el volumen `adc_in_t2w.nii.gz` dentro de la región anatómica de la Zona Periférica ($\text{máscara} == 2$).
-   - Umbralizar vóxeles con restricción marcada: $50 < \text{ADC} < 800\text{ }[\times 10^{-6}\text{ mm}^2/\text{s}]$.
-   - Aplicar apertura y cierre morfológico 3D (`scipy.ndimage`) para eliminar ruido espiculado y rellenar vacíos.
-   - Etiquetar componentes conexas 3D (`scipy.ndimage.label`) y descartar clusters con volumen $< 0.15\text{ cc}$ ($150\text{ mm}^3$).
-   - Para el hallazgo dominante, calcular:
-     - Dimensiones 3D y diámetro máximo (mm).
-     - Estadísticas de ADC: media, mediana, percentil 10 ($\text{ADC}_{\text{P10}}$).
-     - Localización topográfica según la convención observada en los informes de INTECNUS:
-       * **Cráneo-Caudal:** Ápex / Región Media / Base.
-       * **Lateral:** Línea Media / Derecha / Izquierda.
-       * **Antero-Posterior:** Anterior / Posterolateral.
+4. **Detección Focalizada de Candidatos en Difusión ($b \ge 1400$ y ADC):**
+   *Nota Clínica:* El promedio global de ADC en toda la zona periférica no aporta valor diagnóstico. El software debe individualizar los focos sospechosos para que el médico los confirme visualmente:
+   - Cruzar la hiperintensidad en difusión de alto $b$ ($b \ge 1400\text{ s/mm}^2$) con la restricción marcada en el mapa ADC ($50 < \text{ADC} < 800\text{ }[\times 10^{-6}\text{ mm}^2/\text{s}]$) enmascarado en la Zona Periférica.
+   - Aplicar filtrado morfológico 3D (`scipy.ndimage`) y segmentar componentes conexas con volumen $\ge 0.15\text{ cc}$ ($150\text{ mm}^3$).
+   - Por cada candidato detectado (`FOCO_1`, `FOCO_2`), reportar sus métricas individuales:
+     * Volumen focal ($V_{\text{foco}}$ en cc) y diámetro máximo (mm).
+     * $\text{ADC}_{\text{medio}}$ puntual y percentil 10 ($\text{ADC}_{\text{P10}}$).
+     * Localización topográfica 3D (Base / Región Media / Ápex, Derecha / Izquierda / Línea Media, Anterior / Posterolateral).
 
 5. **Criterio de Desempate PI-RADS v2.1 con Contraste Dinámico (DCE) [Opcional]:**
    En la Zona Periférica (PZ), la secuencia dominante es DWI/ADC:
-   - Si la lesión presenta un score DWI/ADC de 3 (restricción focal intermedia):
+   - Si un foco presenta un score DWI/ADC de 3 (restricción focal intermedia):
      * Si DCE es **positivo** (realce focal precoz respecto al parénquima adyacente): categoría final **PI-RADS 4**.
      * Si DCE es **negativo** o **no realizado** (estudio biparamétrico bpMRI sin contraste): se mantiene en **PI-RADS 3**.
    - En la Zona de Transición (TZ), la secuencia dominante es T2W; el estado de DCE no altera la categoría diagnóstica final.
@@ -151,33 +158,43 @@ Diseñar una figura de una página en Matplotlib con `GridSpec` (3 filas $\times
    - Corte de DWI de alto $b$ ($b \ge 1400$) mostrando la hiperintensidad focal.
    - Si se cuenta con `--dce`: Panel de fase arterial precoz dinámica mostrando el realce focal tumoral precoz (*wash-in*).
    - Histograma cuantitativo comparando las distribuciones de ADC en PZ normal vs. TZ vs. foco tumoral, con línea vertical punteada en el umbral 800.
-4. **Informe Estructurado Institucional (Columna Derecha):**
-   Emular el formato textual de los informes de Fundación INTECNUS:
+4. **Informe Estructurado Institucional y Texto Copy-Paste:**
+   Emular el formato textual de los informes de Fundación INTECNUS para la generación simultánea de `clinical_report_template.txt`:
    ```text
-   1. TAMAÑO Y VOLUMETRÍA GLANDULAR
-    • Tamaño: [DAP]mm DAP × [DT]mmDT × [DCC]mmDCC
-    • Vol. Elipsoide: [V_elip] cc
-    • Vol. Vóxel (MONAI): [V_vóxel] cc (TZ: [V_tz]cc, PZ: [V_pz]cc)
+   1. TAMAÑO Y VOLUMETRÍA GLANDULAR (PLANIMETRÍA 3D)
+    • Diámetros: [DT]mm DT (axial) × [DAP]mm DAP (axial) × [DCC]mm DCC (sagital)
+    • Vol. Elipsoide Clínico: [V_elip] cc
+    • Vol. Real (Planimetría Vóxel): [V_vóxel] cc
+      - Zona de Transición (TZ): [V_tz] cc
+      - Zona Periférica (PZ): [V_pz] cc
+      - Relación Transición / Periférica: [Ratio_TZ_PZ]
+      - Índice de Hiperplasia Benigna: [Indice]
     • Discrepancia Elip vs Real: [Delta]%
-    • Índice Hiperplasia TZ: [Indice]
 
-   2. BIOMARCADOR PSA / DENSIDAD
-    • Motivo/PSA: [PSA] ng/mL
-    • Densidad PSA: [PSAD] ng/mL/cc  [NORMAL < 0.15 | ALERTA >= 0.15]
+   2. BIOMARCADORES PSA / DENSIDADES
+    • PSA Sérico: [PSA] ng/mL
+    • Densidad PSA Global (PSAD): [PSAD] ng/mL/cc  [NORMAL < 0.15 | ALERTA >= 0.15]
+    • Densidad PSA en Transición (PSAD_TZ): [PSAD_TZ] ng/mL/cc
 
-   3. EVALUACIÓN ZONAL (PI-RADS v2.1)
-    • Zona Periférica: [Descripción topográfica, ADC medio, P10, dimensiones, Cat T2, Cat DWI-ADC, PI-RADS]
-    • Zona Transicional: Heterogénea habitual. Cat T2: 2 | Cat DWI-ADC: 2 | PI-RADS: 2
+   3. EVALUACIÓN ZONAL Y FOCOS EN DIFUSIÓN (PI-RADS v2.1)
+    • Focos identificados en difusión (b alto + ADC):
+      - FOCO 1: [Topografía 3D], Vol: [V_foco] cc, Diám: [Diam] mm
+        ADC medio: [ADC_medio] | ADC P10: [ADC_P10] x10^-6 mm²/s | Restricción: Marcada
+        DCE: [Realce focal precoz +/-/No evaluado] | Categoría sugerida: [PI-RADS 4/5]
+    • Zona Transicional: Heterogénea habitual sin nódulos dominantes atípicos. Cat T2: 2 | PI-RADS: 2
 
    4. IMPRESIÓN DIAGNÓSTICA (INTECNUS)
-    • Vol Próstata: [V_elip]cc (Elip) / [V_vóxel]cc (3D)
-    • Densidad PSA: [PSAD] ng/mL/cc
-    • Conclusión: [Categoría sugerida PI-RADS]
+    • Vol Próstata: [V_elip] cc (Elipsoide) / [V_vóxel] cc (Planimetría 3D)
+    • Densidad PSA: [PSAD] ng/mL/cc | Densidad TZ: [PSAD_TZ] ng/mL/cc
+    • Conclusión: [Categoría sugerida PI-RADS v2.1 para confirmación del especialista]
    ```
+
 5. **Exportaciones Requeridas:**
-   - `clinical_report.png` (resolución $\ge 200\text{ dpi}$).
-   - `clinical_report.pdf` (vectorial de una página para incorporación a historia clínica).
-   - `morphometry_metrics.csv` (tabla plana con todas las métricas cuantitativas para análisis estadístico).
+   - `clinical_report.png` (resolución $\ge 200\text{ dpi}$ para vista rápida).
+   - `clinical_report.pdf` (vectorial de una página para incorporación a historia clínica digital).
+   - `clinical_report_template.txt` (texto plano con el bloque formateado listo para copiar y pegar en la plantilla de informe médico).
+   - `prostate_seg.dcm` [Opcional - Hito Integrador]: Objeto estándar DICOM SEG (`pydicom-seg`) para importar la segmentación al PACS.
+   - `morphometry_metrics.csv` (tabla cuantitativa de una fila por paciente para auditoría del servicio).
 
 ---
 
@@ -186,7 +203,7 @@ Diseñar una figura de una página en Matplotlib con `GridSpec` (3 filas $\times
 El script principal [`run_pipeline.py`](run_pipeline.py) orquesta la ejecución completa:
 
 ### Opción A: Ingesta Manual de Series (Recomendado durante el desarrollo)
-Permite especificar manualmente las tres rutas de entrada (pueden ser volúmenes `.nii.gz` o carpetas con archivos DICOM individuales):
+Permite especificar manualmente las rutas de entrada (volúmenes `.nii.gz` o carpetas DICOM individuales):
 ```bash
 python run_pipeline.py \
   --manual \
@@ -211,6 +228,20 @@ python run_pipeline.py \
   --device auto
 ```
 
+### Opción C: Re-ejecución con Máscara Corregida Manualmente (Flujo Clínico Ágil)
+Si el radiólogo o físico médico observa que la segmentación automática de MONAI requiere ajustes en ápex o base, puede editar la máscara en 3D Slicer o ITK-SNAP en segundos y re-ejecutar el pipeline saltando la inferencia de FASE 2:
+```bash
+python run_pipeline.py \
+  --manual \
+  --t2w /ruta/al/T2_AXIAL.nii.gz \
+  --adc /ruta/al/ADC.nii.gz \
+  --dwi /ruta/al/DWI_b1400.nii.gz \
+  --mask /ruta/a/prostate_mask_corregida.nii.gz \
+  --psa 22.5 \
+  --study_id "INTECNUS_CASO_01" \
+  --output_dir ./output_caso01_corregido
+```
+
 ---
 
 ## 5. Cronograma de Entregas Sugerido (4 Semanas)
@@ -220,10 +251,12 @@ python run_pipeline.py \
   - Implementar en `src/ingest_dicom.py` la lectura de tags, ordenamiento de cortes, separación del valor $b$ sintético de GE, armonización de escala de ADC y el remuestreo hacia T2W con SimpleITK.
 * **Semana 2: Segmentación con Deep Learning (MONAI) y Volumetría 3D**
   - Implementar en `src/segmentation.py` la inferencia con el bundle `prostate_mri_anatomy`.
-  - Implementar en `src/morphometry.py` el cálculo de volumen real por integración de vóxeles y la extracción de diámetros DAP, DT, DCC con el volumen del elipsoide.
-* **Semana 3: Física de Difusión y Detección en Zona Periférica**
-  - Implementar en `src/morphometry.py` el enmascaramiento en PZ, la umbralización de ADC ($< 800$), el filtrado morfológico 3D y la localización topográfica.
+  - Implementar en `src/morphometry.py` el cálculo de planimetría real por conteo de vóxeles ($V_{\text{total}}$, $V_{\text{TZ}}$, $V_{\text{PZ}}$, $\text{Ratio}_{\text{TZ/PZ}}$) y la extracción de diámetros ortogonales en planos anatómicos estrictos (Axial DT/DAP, Sagital DCC).
+* **Semana 3: Física de Difusión, Focos Sospechosos y Biomarcadores**
+  - Implementar en `src/morphometry.py` el cálculo de $\text{PSAD}_{\text{total}}$ y $\text{PSAD}_{\text{TZ}}$.
+  - Individualizar los candidatos a focos sospechosos cruzando $b \ge 1400$ y $\text{ADC} < 800$, extrayendo el $\text{ADC}_{\text{medio}}$ y $\text{ADC}_{\text{P10}}$ puntual de cada foco junto a su topografía para confirmación médica.
   - Validar los resultados sobre al menos 5 casos locales anonimizados de Fundación INTECNUS.
-* **Semana 4: Reporte Clínico Multipanel y Presentación Final**
-  - Implementar en `src/report_generator.py` la figura en Matplotlib (GridSpec), los cortes con zoom al ROI, el histograma y la exportación en PDF/PNG y CSV.
+* **Semana 4: Reportes Clínicos (Visual, Texto Copy-Paste y DICOM SEG) y Cierre**
+  - Implementar en `src/report_generator.py` la figura en Matplotlib (GridSpec) y la exportación de `clinical_report_template.txt` para pegado directo en plantillas de informes.
+  - Generar el objeto DICOM SEG (`pydicom-seg`) para visualización directa de la máscara en el PACS del servicio.
   - Procesar la cohorte completa de evaluación, tabular la discrepancia elipsoide vs. vóxel y presentar las conclusiones.

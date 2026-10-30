@@ -18,6 +18,7 @@ def parse_arguments():
     parser.add_argument("--adc", help="Ruta a Mapa ADC (NIfTI o carpeta DICOM). Requerido con --manual.")
     parser.add_argument("--dwi", help="Ruta a DWI alto b (NIfTI o carpeta DICOM). Requerido con --manual.")
     parser.add_argument("--dce", default=None, help="[Opcional] Ruta a serie DCE dinámica LAVA/DISCO (NIfTI o carpeta DICOM).")
+    parser.add_argument("--mask", default=None, help="[Opcional] Máscara corregida externamente (NIfTI). Si se define, salta la FASE 2.")
 
     parser.add_argument("--output_dir", default="./output", help="Directorio para guardar resultados y reportes.")
     parser.add_argument("--psa", type=float, default=None, help="Valor de PSA sérico del paciente (ng/mL).")
@@ -68,14 +69,20 @@ def main():
     # -------------------------------------------------------------------------
     # FASE 2: Segmentación Zonal con Deep Learning (src/segmentation.py)
     # -------------------------------------------------------------------------
-    mask_path = out_dir / "prostate_mask.nii.gz"
-    cmd_fase2 = [
-        python_bin, "src/segmentation.py",
-        "--input", str(t2_path),
-        "--output", str(mask_path),
-        "--device", args.device,
-    ]
-    run_command(cmd_fase2, "FASE 2: Segmentación Zonal (src/segmentation.py)")
+    if args.mask:
+        mask_path = Path(args.mask)
+        if not mask_path.exists():
+            sys.exit(f"Error: La máscara especificada no existe: {mask_path}")
+        print(f"\n[INFO] Empleando máscara provista / corregida: {mask_path} (omitiendo inferencia de FASE 2).")
+    else:
+        mask_path = out_dir / "prostate_mask.nii.gz"
+        cmd_fase2 = [
+            python_bin, "src/segmentation.py",
+            "--input", str(t2_path),
+            "--output", str(mask_path),
+            "--device", args.device,
+        ]
+        run_command(cmd_fase2, "FASE 2: Segmentación Zonal (src/segmentation.py)")
 
     # -------------------------------------------------------------------------
     # FASE 3: Morfometría 3D, Elipsoide, PSAD y Difusión (src/morphometry.py)
@@ -87,6 +94,8 @@ def main():
         "--mask", str(mask_path),
         "--output_dir", str(out_dir),
     ]
+    if dwi_path.exists():
+        cmd_fase3 += ["--dwi", str(dwi_path)]
     if args.psa is not None:
         cmd_fase3 += ["--psa", str(args.psa)]
     if dce_path.exists():

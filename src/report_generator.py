@@ -24,7 +24,11 @@ DATOS DE SALIDA:
 ----------------
 1. clinical_report.png: Imagen de alta resolución (>= 200 dpi) para visualización rápida.
 2. clinical_report.pdf: Documento vectorial de una sola página apto para historia clínica digital.
-3. morphometry_metrics.csv: Archivo CSV estructurado con una fila por paciente,
+3. clinical_report_template.txt: Texto plano con los párrafos formateados listo para copiar
+   y pegar directamente en la plantilla de informe médico del servicio de INTECNUS.
+4. prostate_seg.dcm: [Opcional - Fase Final] Objeto estándar DICOM Segmentation (DICOM SEG)
+   generado mediante 'pydicom-seg', listo para importar en estaciones de trabajo y PACS institucional.
+5. morphometry_metrics.csv: Archivo CSV estructurado con una fila por paciente,
    ideal para auditoría de calidad clínica o análisis estadístico del servicio.
 
 ESPECIFICACIONES DE DISEÑO Y MAQUETACIÓN (INTECNUS):
@@ -36,35 +40,45 @@ ESPECIFICACIONES DE DISEÑO Y MAQUETACIÓN (INTECNUS):
 
    - Fila 1 (Cortes Anatómicos T2W):
      * Panel 1: Corte Axial centrado en el ROI prostático (recorte automático con margen
-       de ~18 mm) con superposición de contornos: TZ (cian), PZ (verde) y lesión (rojo).
+       de ~18 mm) con superposición de contornos: TZ (cian), PZ (verde) y focos sospechosos (rojo).
      * Panel 2: Reconstrucción Sagital con corrección física de aspect ratio (dz / dy).
      * Panel 3: Reconstrucción Coronal con corrección física de aspect ratio (dz / dx).
 
    - Fila 2 (Paneles Funcionales y Cuantitativos):
      * Panel 4: Mapa térmico de ADC (colormap 'magma') centrado en el ROI con barra de color
-       en [10^-6 mm²/s] y contorno de la lesión sospechosa.
-     * Panel 5: Corte de DWI alto valor b (b=1400, colormap 'inferno') mostrando hiperintensidad.
-     * Panel 6: Histograma cuantitativo comparando las densidades de probabilidad de ADC en:
-       PZ normal vs. TZ normal vs. Foco sospechoso, con línea vertical punteada en el umbral 800.
+       en [10^-6 mm²/s] y contornos de focos candidatos detectados.
+     * Panel 5: Corte de DWI alto valor b (b=1400, colormap 'inferno') mostrando hiperintensidad focal.
+     * Panel 6: Histograma cuantitativo zonal comparando distribuciones de ADC en:
+       PZ normal vs. TZ normal vs. Foco(s) sospechoso(s), con línea vertical punteada en 800.
 
    - Columna Derecha (Paneles 7 y 8):
-     * Tarjeta de informe estructurado reproduciendo las secciones de Fundación INTECNUS:
-       1. TAMAÑO Y VOLUMETRÍA GLANDULAR:
-          Tamaño: [DAP]mm DAP × [DT]mmDT × [DCC]mmDCC
-          Vol. Elipsoide: [V_elip] cc
-          Vol. Vóxel (MONAI): [V_vóxel] cc (TZ: [V_tz]cc, PZ: [V_pz]cc)
-          Discrepancia Elip vs Real: [Delta]%
-          Índice Hiperplasia TZ: [Indice]
-       2. BIOMARCADOR PSA / DENSIDAD:
-          Motivo/PSA: [PSA] ng/mL
-          Densidad PSA: [PSAD] ng/mL/cc  [NORMAL < 0.15 | ALERTA >= 0.15]
-       3. EVALUACIÓN ZONAL (PI-RADS v2.1):
-          Zona Periférica: [Topografía, ADC medio, P10, dimensiones, Cat T2, Cat DWI-ADC, PI-RADS]
-          Zona Transicional: Heterogénea habitual. Cat T2: 2 | Cat DWI-ADC: 2 | PI-RADS: 2
+     * Tarjeta de informe estructurado y generación simultánea de clinical_report_template.txt:
+       1. TAMAÑO Y VOLUMETRÍA GLANDULAR (PLANIMETRÍA):
+          • Diámetros: [DT]mm (DT max axial) × [DAP]mm (DAP max axial) × [DCC]mm (DCC max sagital)
+          • Vol. Elipsoide Clínico: [V_elip] cc
+          • Vol. Real (Planimetría Vóxel): [V_vóxel] cc
+            - Zona de Transición (TZ): [V_tz] cc
+            - Zona Periférica (PZ): [V_pz] cc
+            - Relación Transición / Periférica: [Ratio_TZ_PZ]
+            - Índice de Hiperplasia Benigna: [Indice]
+          • Discrepancia Elip vs Real: [Delta]%
+
+       2. BIOMARCADORES PSA / DENSIDADES:
+          • PSA Sérico: [PSA] ng/mL
+          • Densidad PSA Global (PSAD): [PSAD] ng/mL/cc  [NORMAL < 0.15 | ALERTA >= 0.15]
+          • Densidad PSA en Transición (PSAD_TZ): [PSAD_TZ] ng/mL/cc
+
+       3. EVALUACIÓN DE DIFUSIÓN Y FOCOS SOSPECHOSOS (PI-RADS v2.1):
+          • Focos identificados en difusión (b alto + ADC):
+            - Foco 1: [Topografía exacta], Vol: [V_foco] cc, Diám: [Diam] mm
+              ADC medio: [ADC_medio] | ADC P10: [ADC_P10] x10^-6 mm²/s
+              Restricción marcada. DCE: [Realce +/-/No eval.]
+          • Zona Transicional: Heterogénea habitual sin nódulos atípicos dominantes.
+
        4. IMPRESIÓN DIAGNÓSTICA (INTECNUS):
-          Vol Próstata: [V_elip]cc (Elip) / [V_vóxel]cc (3D)
-          Densidad PSA: [PSAD] ng/mL/cc
-          Conclusión: [Categoría sugerida PI-RADS]
+          • Vol Próstata: [V_elip] cc (Elipsoide) / [V_vóxel] cc (Planimetría 3D)
+          • Densidad PSA: [PSAD] ng/mL/cc | Densidad TZ: [PSAD_TZ] ng/mL/cc
+          • Conclusión: [Categoría sugerida PI-RADS v2.1 para confirmación médica]
 """
 
 import argparse
@@ -81,6 +95,7 @@ def main():
     parser.add_argument("--dce", default=None, help="[Opcional] Ruta al volumen NIfTI DCE corregistrado (fase precoz LAVA/DISCO).")
     parser.add_argument("--mask", required=True, help="Ruta a la máscara zonal (prostate_mask.nii.gz).")
     parser.add_argument("--metrics", required=True, help="Ruta al JSON de métricas (morphometry_results.json).")
+    parser.add_argument("--dicom_ref", default=None, help="[Opcional] Ruta a serie DICOM T2W de referencia para exportar DICOM SEG.")
     parser.add_argument("--output_dir", default="./output", help="Directorio destino para guardar los reportes.")
     parser.add_argument("--study_id", default="ESTUDIO_001", help="Identificador del estudio.")
 
