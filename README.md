@@ -122,7 +122,7 @@ prostate-mri-pipeline/
 
    Cuantificar la discrepancia porcentual respecto a la planimetría real:
 
-   $$\Delta\% = \frac{|V_ {\text{vóxel}} - V_ {\text{elipsoide}}|}{V_ {\text{vóxel}}} \times 100\%$$
+   $$\Delta\\% = \frac{|V_ {\text{vóxel}} - V_ {\text{elipsoide}}|}{V_ {\text{vóxel}}} \times 100\\%$$
 
 3. **Biomarcadores de PSA:**
    - **Densidad de PSA Global ($\text{PSAD}$):**
