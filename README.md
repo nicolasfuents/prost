@@ -10,12 +10,12 @@
 
 ## 1. Contexto Clínico y Objetivo del Proyecto
 
-El objetivo del proyecto es desarrollar el **núcleo computacional (Core CLI)** en Python para el procesamiento, análisis morfométrico y generación de reportes clínicos cuantitativos de Resonancia Magnética Multiparamétrica de próstata adquirida en el equipo **GE SIGNA PRIME (3.0T)** sin bobina endorrectal (antena de superficie pelviana), bajo el estándar internacional **PI-RADS v2.1**.
+El objetivo del proyecto es desarrollar el **núcleo computacional (Core CLI)** en Python para el procesamiento, análisis morfométrico y generación de reportes clínicos cuantitativos de Resonancia Magnética Multiparamétrica de próstata adquirida en el equipo **GE SIGNA PRIME (3.0T)** de Fundación INTECNUS, bajo el estándar internacional **PI-RADS v2.1**.
 
 ### Confidencialidad y Anonimización de Datos
 Todos los estudios del servicio provistos para este trabajo integrador se encuentran estrictamente anonimizados (desprovistos de nombre, DNI, número de historia clínica y número de acceso) y son identificados únicamente mediante códigos institucionales tipo `CASO_01`, `ESTUDIO_002`, etc. Ningún dato filiatorio real debe ser incorporado al repositorio ni a los reportes generados.
 
-El repositorio contiene la arquitectura modular del sistema y los archivos esqueleto (*scaffolds*) con sus interfaces y especificaciones físicas. **Los alumnos deben implementar el código correspondiente a cada módulo**, guiándose por las fórmulas analíticas, los criterios de física médica y la estructura observada en los informes clínicos del servicio.
+El repositorio contiene la arquitectura modular del sistema y las plantillas base con sus interfaces y especificaciones físicas. **Los alumnos deben implementar el código correspondiente a cada módulo**, guiándose por las fórmulas analíticas, los criterios de física médica y la estructura observada en los informes clínicos del servicio.
 
 ---
 
@@ -44,9 +44,7 @@ prostate-mri-pipeline/
 ### Módulo 1: Ingesta DICOM, Filtrado y Corregistro (`src/ingest_dicom.py`)
 
 1. **Clasificación Determinista de Series:**
-   - **T2W Axial:** Secuencia anatómica de alta resolución. Validar orientación axial mediante el producto vectorial de los cosenos directores en `ImageOrientationPatient (0020,0037)`:
-     $$\vec{n} = \vec{r}_{\text{row}} \times \vec{r}_{\text{col}}$$
-     Si $|n_z| > 0.80$, la serie es axial.
+   - **T2W Axial:** Secuencia anatómica de alta resolución. Validar orientación axial mediante el producto vectorial de los cosenos directores en `ImageOrientationPatient (0020,0037)`: $\vec{n} = \vec{r}_{\text{row}} \times \vec{r}_{\text{col}}$. Si $|n_z| > 0.80$, la serie es axial.
    - **Mapa ADC:** Identificar series con `"adc"` en `SeriesDescription`, ignorando capturas secundarias RGB (`"color"`, `"fusion"`, `"eadc"`).
    - **DWI de Alto Valor $b$ ($b \ge 1400\text{ s/mm}^2$):** Identificar series de difusión (`"dw_synthetic"`, `"focus"`). En el GE SIGNA PRIME, la serie sintética apila múltiples adquisiciones por corte anatómico (ej. 64 instancias para 32 posiciones de corte). Deben agrupar las instancias por `ImagePositionPatient (0020,0032)` y seleccionar el corte correspondiente al mayor valor $b$.
 
@@ -92,7 +90,9 @@ prostate-mri-pipeline/
 ### Módulo 3: Morfometría 3D, Biomarcadores y Difusión (`src/morphometry.py`)
 
 1. **Planimetría Automática 3D (Volumetría Real por Conteo de Vóxeles):**
-   $$V_{\text{vóxel}} = N_{\text{vóxeles}} \times (\Delta x \cdot \Delta y \cdot \Delta z) \times 10^{-3}\text{ [cc o cm}^3\text{]}$$
+
+   $$V_{\text{vóxel}} = N_{\text{vóxeles}} \times (\Delta x \cdot \Delta y \cdot \Delta z) \times 10^{-3}\quad [\text{cc o cm}^3]$$
+
    - **Justificación Asistencial:** Automatiza la planimetría corte a corte en segundos. Aporta máxima reproducibilidad y precisión diagnóstica en:
      * Glándulas grandes o asimétricas con hiperplasia prostática benigna (adenomas con lóbulo medio prominente donde el elipsoide falla entre un 20% y 30%).
      * Pacientes con densidades de PSA en zona gris cercanas al punto de corte ($0.12 - 0.18\text{ ng/mL/cc}$).
@@ -111,29 +111,29 @@ prostate-mri-pipeline/
      * $\text{DAP}$: Diámetro Antero-Posterior máximo (profundidad ventral a dorsal, Eje Y, en mm).
    - **Plano Sagital T2W (corte medio sagital):**
      * $\text{DCC}$: Diámetro Cráneo-Caudal máximo (altura desde la base vesical al ápex prostático, Eje Z, en mm).
-   
+
    Calcular el volumen del elipsoide clínico:
-   $$V_{\text{elipsoide}} = \text{DAP} \times \text{DT} \times \text{DCC} \times \frac{\pi}{6} \times 10^{-3}\text{ [cc]}$$
-   
+
+   $$V_{\text{elipsoide}} = \text{DAP} \times \text{DT} \times \text{DCC} \times \frac{\pi}{6} \times 10^{-3}\quad [\text{cc}]$$
+
    Cuantificar la discrepancia porcentual respecto a la planimetría real:
+
    $$\Delta\% = \frac{|V_{\text{vóxel}} - V_{\text{elipsoide}}|}{V_{\text{vóxel}}} \times 100\%$$
 
 3. **Biomarcadores de PSA:**
-   - **Densidad de PSA Global ($\text{PSAD}$):**
-     $$\text{PSAD} = \frac{\text{PSA [ng/mL]}}{V_{\text{total}}\text{ [cc]}}$$
-     - Normal: $\text{PSAD} < 0.15\text{ ng/mL/cc}$.
-     - Alerta clínica: $\text{PSAD} \ge 0.15\text{ ng/mL/cc}$ (alta sospecha de cáncer significativo).
-   - **Densidad de PSA en Zona de Transición ($\text{PSAD}_{\text{TZ}}$):**
-     $$\text{PSAD}_{\text{TZ}} = \frac{\text{PSA [ng/mL]}}{V_{\text{TZ}}\text{ [cc]}}$$
+   - **Densidad de PSA Global (PSAD):** $\text{PSAD} = \text{PSA} / V_{\text{total}}\quad [\text{ng/mL/cc}]$.
+     * Normal: $\text{PSAD} < 0.15\text{ ng/mL/cc}$.
+     * Alerta clínica: $\text{PSAD} \ge 0.15\text{ ng/mL/cc}$ (alta sospecha de cáncer significativo).
+   - **Densidad de PSA en Zona de Transición ($\text{PSAD}_{\text{TZ}}$):** $\text{PSAD}_{\text{TZ}} = \text{PSA} / V_{\text{TZ}}\quad [\text{ng/mL/cc}]$.  
      Biomarcador diferencial fundamental: un PSA elevado acompañado de un $\text{PSAD}_{\text{TZ}}$ bajo se correlaciona con adenoma benigno voluminoso y no con neoplasia maligna oculta.
 
 4. **Detección Focalizada de Candidatos en Difusión ($b \ge 1400$ y ADC):**
    *Nota Clínica:* El promedio global de ADC en toda la zona periférica no aporta valor diagnóstico. El software debe individualizar los focos sospechosos para que el médico los confirme visualmente:
-   - Cruzar la hiperintensidad en difusión de alto $b$ ($b \ge 1400\text{ s/mm}^2$) con la restricción marcada en el mapa ADC ($50 < \text{ADC} < 800\text{ }[\times 10^{-6}\text{ mm}^2/\text{s}]$) enmascarado en la Zona Periférica.
+   - Cruzar la hiperintensidad en difusión de alto $b$ ($b \ge 1400\text{ s/mm}^2$) con la restricción marcada en el mapa ADC ($50 < \text{ADC} < 800\times 10^{-6}\text{ mm}^2/\text{s}$) enmascarado en la Zona Periférica.
    - Aplicar filtrado morfológico 3D (`scipy.ndimage`) y segmentar componentes conexas con volumen $\ge 0.15\text{ cc}$ ($150\text{ mm}^3$).
    - Por cada candidato detectado (`FOCO_1`, `FOCO_2`), reportar sus métricas individuales:
      * Volumen focal ($V_{\text{foco}}$ en cc) y diámetro máximo (mm).
-     * $\text{ADC}_{\text{medio}}$ puntual y percentil 10 ($\text{ADC}_{\text{P10}}$).
+     * ADC medio puntual y percentil 10 (ADC P10 en $10^{-6}\text{ mm}^2/\text{s}$).
      * Localización topográfica 3D (Base / Región Media / Ápex, Derecha / Izquierda / Línea Media, Anterior / Posterolateral).
 
 5. **Criterio de Desempate PI-RADS v2.1 con Contraste Dinámico (DCE) [Opcional]:**
