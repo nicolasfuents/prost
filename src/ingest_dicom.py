@@ -19,6 +19,7 @@ Opción B (Ingesta manual):
   --t2w: Ruta a la serie T2W Axial (archivo NIfTI o carpeta con instancias DICOM).
   --adc: Ruta al Mapa ADC (archivo NIfTI o carpeta con instancias DICOM).
   --dwi: Ruta al DWI de alto valor b (archivo NIfTI o carpeta con instancias DICOM).
+  --dce: [Opcional] Ruta a la serie dinámica de contraste LAVA/DISCO (NIfTI o carpeta DICOM).
 
 DATOS DE SALIDA (en --output_dir):
 ----------------------------------
@@ -27,6 +28,8 @@ DATOS DE SALIDA (en --output_dir):
    proyectado a la grilla geométrica exacta de t2w_axial.nii.gz.
 3. dwi_high_b_in_t2w.nii.gz: Volumen de difusión de alto b (b >= 1400 s/mm²),
    proyectado a la grilla geométrica de t2w_axial.nii.gz.
+4. dce_in_t2w.nii.gz: [Opcional] Fase arterial precoz dinámica (~30-45 seg post-contraste),
+   proyectada a la grilla geométrica de t2w_axial.nii.gz (si el estudio incluye contraste).
 
 ESPECIFICACIONES TÉCNICAS Y CRITERIOS DE FÍSICA MÉDICA (GE SIGNA PRIME / INTECNUS):
 -----------------------------------------------------------------------------------
@@ -36,6 +39,7 @@ ESPECIFICACIONES TÉCNICAS Y CRITERIOS DE FÍSICA MÉDICA (GE SIGNA PRIME / INTE
    - Mapa ADC: Identificar por 'adc' en SeriesDescription, excluyendo capturas secundarias RGB
      ('color', 'fusion', 'eadc').
    - DWI Alto b: Identificar por 'dwi', 'focus' o 'dw_synthetic'.
+   - DCE Dinámico [Opcional]: Identificar por 'lava', 'disco' o 'dynamic'.
 
 2. Manejo de secuencias con múltiples valores b (GE DW_Synthetic):
    En el equipo GE SIGNA PRIME, la serie sintética apila múltiples adquisiciones por corte
@@ -50,9 +54,14 @@ ESPECIFICACIONES TÉCNICAS Y CRITERIOS DE FÍSICA MÉDICA (GE SIGNA PRIME / INTE
    10^-3 mm²/s (x 10^3) o 10^-9 mm²/s (x 10^-3).
 
 4. Corregistro geométrico con SimpleITK:
-   Las secuencias de difusión focalizada (GE Ax FOCUS) poseen menor FOV que el T2W axial.
-   Utilizar sitk.ResampleImageFilter con interpolador lineal, transformación identidad
-   y default_pixel_value = 0.0 para alinear ADC y DWI sobre la grilla del T2W axial.
+   Las secuencias de difusión focalizada (GE Ax FOCUS) y las dinámicas (LAVA/DISCO) poseen menor FOV
+   o distinta resolución que el T2W axial. Utilizar sitk.ResampleImageFilter con interpolador lineal,
+   transformación identidad y default_pixel_value = 0.0 para alinear ADC, DWI y DCE sobre la grilla del T2W axial.
+
+5. Fase precoz de contraste dinámico (DCE) [Opcional]:
+   Si el estudio incluye secuencias con gadolinio, extraer la fase temporal precoz (segundo volumen dinámico,
+   típicamente a los ~30-45 segundos de la inyección) donde se observa el pico de realce arterial tumoral (wash-in)
+   antes del lavado o realce de la glándula periférica normal.
 """
 
 import argparse
@@ -65,11 +74,12 @@ def main():
     )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--dicom_dir", help="Directorio del estudio DICOM completo para escaneo automático.")
-    group.add_argument("--manual", action="store_true", help="Especificar manualmente las 3 series de entrada.")
+    group.add_argument("--manual", action="store_true", help="Especificar manualmente las series de entrada.")
 
     parser.add_argument("--t2w", help="Ruta a T2W Axial (archivo NIfTI o carpeta DICOM).")
     parser.add_argument("--adc", help="Ruta a Mapa ADC (archivo NIfTI o carpeta DICOM).")
     parser.add_argument("--dwi", help="Ruta a DWI alto b (archivo NIfTI o carpeta DICOM).")
+    parser.add_argument("--dce", default=None, help="[Opcional] Ruta a serie DCE dinámica LAVA/DISCO (NIfTI o carpeta DICOM).")
     parser.add_argument("--output_dir", default="./output", help="Directorio destino para guardar los NIfTI corregistrados.")
 
     args = parser.parse_args()
@@ -77,7 +87,7 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if args.manual and not (args.t2w and args.adc and args.dwi):
-        parser.error("El modo --manual requiere especificar --t2w, --adc y --dwi.")
+        parser.error("El modo --manual requiere como mínimo especificar --t2w, --adc y --dwi.")
 
     # Implementación de la ingesta, normalización de ADC y corregistro
     pass

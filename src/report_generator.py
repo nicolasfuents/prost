@@ -14,10 +14,11 @@ DATOS DE ENTRADA:
 1. --t2w: Volumen NIfTI T2W Axial (t2w_axial.nii.gz).
 2. --adc: Mapa NIfTI ADC corregistrado en grilla T2W (adc_in_t2w.nii.gz).
 3. --dwi: Volumen NIfTI DWI alto valor b corregistrado (dwi_high_b_in_t2w.nii.gz).
-4. --mask: Máscara 3D zonal de MONAI (prostate_mask.nii.gz).
-5. --metrics: Archivo JSON con las métricas cuantitativas (morphometry_results.json).
-6. --output_dir: Carpeta destino donde guardar los reportes.
-7. --study_id: Identificador anonimizado del paciente o estudio.
+4. --dce: [Opcional] Volumen NIfTI DCE fase arterial precoz corregistrado (dce_in_t2w.nii.gz).
+5. --mask: Máscara 3D zonal de MONAI (prostate_mask.nii.gz).
+6. --metrics: Archivo JSON con las métricas cuantitativas (morphometry_results.json).
+7. --output_dir: Carpeta destino donde guardar los reportes.
+8. --study_id: Identificador anonimizado del paciente o estudio.
 
 DATOS DE SALIDA:
 ----------------
@@ -77,6 +78,7 @@ def main():
     parser.add_argument("--t2w", required=True, help="Ruta al volumen NIfTI T2W Axial.")
     parser.add_argument("--adc", required=True, help="Ruta al volumen NIfTI ADC corregistrado.")
     parser.add_argument("--dwi", default=None, help="Ruta al volumen NIfTI DWI alto valor b corregistrado.")
+    parser.add_argument("--dce", default=None, help="[Opcional] Ruta al volumen NIfTI DCE corregistrado (fase precoz LAVA/DISCO).")
     parser.add_argument("--mask", required=True, help="Ruta a la máscara zonal (prostate_mask.nii.gz).")
     parser.add_argument("--metrics", required=True, help="Ruta al JSON de métricas (morphometry_results.json).")
     parser.add_argument("--output_dir", default="./output", help="Directorio destino para guardar los reportes.")

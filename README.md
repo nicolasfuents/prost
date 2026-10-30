@@ -62,7 +62,10 @@ prostate-mri-pipeline/
    - $10^{-9}\text{ mm}^2/\text{s}$ (mediana $\sim 1200000$) $\rightarrow$ multiplicar por $10^{-3}$.
 
 4. **Corregistro Geométrico Inter-Secuencia (`SimpleITK`):**
-   Las secuencias de difusión focalizada (`Ax FOCUS`) tienen un FOV reducido respecto al T2W axial. Deben proyectar el mapa ADC y el DWI a la grilla geométrica exacta del T2W axial utilizando `sitk.ResampleImageFilter` (interpolación lineal para imágenes continuas y default pixel value = 0.0).
+   Las secuencias de difusión focalizada (`Ax FOCUS`) y dinámicas de contraste (`LAVA`/`DISCO`) tienen distinta resolución y FOV respecto al T2W axial. Deben proyectar el mapa ADC, el DWI y el DCE a la grilla geométrica exacta del T2W axial utilizando `sitk.ResampleImageFilter` (interpolación lineal para imágenes continuas y default pixel value = 0.0).
+
+5. **Manejo Opcional de Contraste Dinámico (DCE / LAVA / DISCO):**
+   Si el estudio incluye secuencias contrastadas con gadolinio, identificar las series multiphase (`LAVA`, `DISCO`). Extraer el volumen correspondiente a la fase arterial precoz (~30-45 s post-inyección) donde se produce el pico de realce tumoral (*wash-in*) y generar `dce_in_t2w.nii.gz`. Si el estudio es biparamétrico (sin contraste), el pipeline prescinde de esta secuencia de forma transparente.
 
 ---
 
@@ -126,6 +129,13 @@ prostate-mri-pipeline/
        * **Lateral:** Línea Media / Derecha / Izquierda.
        * **Antero-Posterior:** Anterior / Posterolateral.
 
+5. **Criterio de Desempate PI-RADS v2.1 con Contraste Dinámico (DCE) [Opcional]:**
+   En la Zona Periférica (PZ), la secuencia dominante es DWI/ADC:
+   - Si la lesión presenta un score DWI/ADC de 3 (restricción focal intermedia):
+     * Si DCE es **positivo** (realce focal precoz respecto al parénquima adyacente): categoría final **PI-RADS 4**.
+     * Si DCE es **negativo** o **no realizado** (estudio biparamétrico bpMRI sin contraste): se mantiene en **PI-RADS 3**.
+   - En la Zona de Transición (TZ), la secuencia dominante es T2W; el estado de DCE no altera la categoría diagnóstica final.
+
 ---
 
 ### Módulo 4: Generación de Reporte Clínico Multipanel (`src/report_generator.py`)
@@ -139,6 +149,7 @@ Diseñar una figura de una página en Matplotlib con `GridSpec` (3 filas $\times
 3. **Paneles Funcionales y Cuantitativos:**
    - Mapa térmico de ADC (`magma`) con barra de color en $[10^{-6}\text{ mm}^2/\text{s}]$.
    - Corte de DWI de alto $b$ ($b \ge 1400$) mostrando la hiperintensidad focal.
+   - Si se cuenta con `--dce`: Panel de fase arterial precoz dinámica mostrando el realce focal tumoral precoz (*wash-in*).
    - Histograma cuantitativo comparando las distribuciones de ADC en PZ normal vs. TZ vs. foco tumoral, con línea vertical punteada en el umbral 800.
 4. **Informe Estructurado Institucional (Columna Derecha):**
    Emular el formato textual de los informes de Fundación INTECNUS:
@@ -182,10 +193,12 @@ python run_pipeline.py \
   --t2w /ruta/al/T2_AXIAL.nii.gz \
   --adc /ruta/al/ADC.nii.gz \
   --dwi /ruta/al/DWI_b1400.nii.gz \
+  --dce /ruta/al/DCE_fase_precoz.nii.gz \
   --psa 22.5 \
   --study_id "INTECNUS_CASO_01" \
   --output_dir ./output_caso01
 ```
+*(Nota: El parámetro `--dce` es opcional; si el estudio es biparamétrico sin contraste, se omite).*
 
 ### Opción B: Escaneo y Clasificación Automática de Estudio DICOM
 Procesa una carpeta completa de un estudio exportado del PACS:

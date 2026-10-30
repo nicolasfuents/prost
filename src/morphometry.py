@@ -65,6 +65,13 @@ ESPECIFICACIONES FÍSICAS Y FÓRMULAS DE FUNDACIÓN INTECNUS:
        * Eje Cráneo-Caudal: Ápex / Región Media / Base.
        * Eje Lateral: Línea Media / Derecha / Izquierda (según sistema de coordenadas LPS).
        * Eje Antero-Posterior: Anterior / Posterolateral.
+
+5. Criterio de desempate con Contraste Dinámico (DCE) [Opcional - PI-RADS v2.1]:
+   En la Zona Periférica (PZ), la secuencia dominante es DWI/ADC:
+   - Si la lesión obtiene una categoría DWI/ADC = 3 (restricción intermedia):
+     * Si DCE es POSITIVO (realce focal precoz respecto al parénquima adyacente): categoría final PI-RADS 4.
+     * Si DCE es NEGATIVO o NO REALIZADO (estudio biparamétrico bpMRI): categoría final PI-RADS 3.
+   - En la Zona de Transición (TZ), la secuencia dominante es T2W; DCE no modifica la categoría final.
 """
 
 import argparse
@@ -78,6 +85,7 @@ def main():
     parser.add_argument("--t2w", required=True, help="Ruta al volumen NIfTI T2W Axial.")
     parser.add_argument("--adc", required=True, help="Ruta al volumen NIfTI ADC corregistrado.")
     parser.add_argument("--mask", required=True, help="Ruta a la máscara zonal (prostate_mask.nii.gz).")
+    parser.add_argument("--dce", default=None, help="[Opcional] Ruta a volumen NIfTI DCE corregistrado para análisis de realce.")
     parser.add_argument("--psa", type=float, default=None, help="Valor sérico de PSA (ng/mL).")
     parser.add_argument("--output_dir", default="./output", help="Directorio para guardar JSON y máscara de lesión.")
 

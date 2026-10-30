@@ -17,6 +17,7 @@ def parse_arguments():
     parser.add_argument("--t2w", help="Ruta a T2W Axial (NIfTI o carpeta DICOM). Requerido con --manual.")
     parser.add_argument("--adc", help="Ruta a Mapa ADC (NIfTI o carpeta DICOM). Requerido con --manual.")
     parser.add_argument("--dwi", help="Ruta a DWI alto b (NIfTI o carpeta DICOM). Requerido con --manual.")
+    parser.add_argument("--dce", default=None, help="[Opcional] Ruta a serie DCE dinámica LAVA/DISCO (NIfTI o carpeta DICOM).")
 
     parser.add_argument("--output_dir", default="./output", help="Directorio para guardar resultados y reportes.")
     parser.add_argument("--psa", type=float, default=None, help="Valor de PSA sérico del paciente (ng/mL).")
@@ -54,12 +55,15 @@ def main():
         if not (args.t2w and args.adc and args.dwi):
             sys.exit("Error: El modo --manual requiere especificar --t2w, --adc y --dwi.")
         cmd_fase1 += ["--manual", "--t2w", args.t2w, "--adc", args.adc, "--dwi", args.dwi]
+        if args.dce:
+            cmd_fase1 += ["--dce", args.dce]
 
     run_command(cmd_fase1, "FASE 1: Ingesta y Corregistro (src/ingest_dicom.py)")
 
     t2_path = out_dir / "t2w_axial.nii.gz"
     adc_path = out_dir / "adc_in_t2w.nii.gz"
     dwi_path = out_dir / "dwi_high_b_in_t2w.nii.gz"
+    dce_path = out_dir / "dce_in_t2w.nii.gz"
 
     # -------------------------------------------------------------------------
     # FASE 2: Segmentación Zonal con Deep Learning (src/segmentation.py)
@@ -85,6 +89,8 @@ def main():
     ]
     if args.psa is not None:
         cmd_fase3 += ["--psa", str(args.psa)]
+    if dce_path.exists():
+        cmd_fase3 += ["--dce", str(dce_path)]
 
     run_command(cmd_fase3, "FASE 3: Morfometría y Difusión (src/morphometry.py)")
 
@@ -102,6 +108,9 @@ def main():
         "--output_dir", str(out_dir),
         "--study_id", args.study_id,
     ]
+    if dce_path.exists():
+        cmd_fase4 += ["--dce", str(dce_path)]
+
     run_command(cmd_fase4, "FASE 4: Reporte Clínico Multipanel (src/report_generator.py)")
 
     print("\n" + "=" * 75)
