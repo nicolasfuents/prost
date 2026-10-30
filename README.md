@@ -46,9 +46,7 @@ prostate-mri-pipeline/
 1. **Clasificación Determinista de Series:**
    - **T2W Axial:** Secuencia anatómica de alta resolución. Validar orientación axial mediante el producto vectorial de los cosenos directores en `ImageOrientationPatient (0020,0037)`:
 
-     ```math
-     \vec{n} = \vec{r}_{\text{row}} \times \vec{r}_{\text{col}}
-     ```
+     $$\vec{n} = \vec{r}_ {\text{row}} \times \vec{r}_ {\text{col}}$$
 
      Si $|n_z| > 0.80$, la serie es axial.
    - **Mapa ADC:** Identificar series con `"adc"` en `SeriesDescription`, ignorando capturas secundarias RGB (`"color"`, `"fusion"`, `"eadc"`).
@@ -97,9 +95,7 @@ prostate-mri-pipeline/
 
 1. **Planimetría Automática 3D (Volumetría Real por Conteo de Vóxeles):**
 
-   ```math
-   V_{\text{vóxel}} = N_{\text{vóxeles}} \times (\Delta x \cdot \Delta y \cdot \Delta z) \times 10^{-3}\text{ [cc o cm}^3\text{]}
-   ```
+   $$V_{\text{vóxel}} = N_{\text{vóxeles}} \times (\Delta x \cdot \Delta y \cdot \Delta z) \times 10^{-3}\text{ [cc o cm}^3\text{]}$$
 
    - **Justificación Asistencial:** Automatiza la planimetría corte a corte en segundos. Aporta máxima reproducibilidad y precisión diagnóstica en:
      * Glándulas grandes o asimétricas con hiperplasia prostática benigna (adenomas con lóbulo medio prominente donde el elipsoide falla entre un 20% y 30%).
@@ -122,30 +118,22 @@ prostate-mri-pipeline/
 
    Calcular el volumen del elipsoide clínico:
 
-   ```math
-   V_{\text{elipsoide}} = \text{DAP} \times \text{DT} \times \text{DCC} \times \frac{\pi}{6} \times 10^{-3}\text{ [cc]}
-   ```
+   $$V_{\text{elipsoide}} = \text{DAP} \times \text{DT} \times \text{DCC} \times \frac{\pi}{6} \times 10^{-3}\text{ [cc]}$$
 
    Cuantificar la discrepancia porcentual respecto a la planimetría real:
 
-   ```math
-   \Delta\% = \frac{|V_{\text{vóxel}} - V_{\text{elipsoide}}|}{V_{\text{vóxel}}} \times 100\%
-   ```
+   $$\Delta\% = \frac{|V_ {\text{vóxel}} - V_ {\text{elipsoide}}|}{V_ {\text{vóxel}}} \times 100\%$$
 
 3. **Biomarcadores de PSA:**
    - **Densidad de PSA Global ($\text{PSAD}$):**
 
-     ```math
-     \text{PSAD} = \frac{\text{PSA [ng/mL]}}{V_{\text{total}}\text{ [cc]}}
-     ```
+     $$\text{PSAD} = \frac{\text{PSA [ng/mL]}}{V_{\text{total}}\text{ [cc]}}$$
 
      * Normal: $\text{PSAD} < 0.15\text{ ng/mL/cc}$.
      * Alerta clínica: $\text{PSAD} \ge 0.15\text{ ng/mL/cc}$ (alta sospecha de cáncer significativo).
    - **Densidad de PSA en Zona de Transición ($`\text{PSAD}_{\text{TZ}}`$):**
 
-     ```math
-     \text{PSAD}_{\text{TZ}} = \frac{\text{PSA [ng/mL]}}{V_{\text{TZ}}\text{ [cc]}}
-     ```
+     $$\text{PSAD}_ {\text{TZ}} = \frac{\text{PSA [ng/mL]}}{V_ {\text{TZ}}\text{ [cc]}}$$
 
      Biomarcador diferencial fundamental: un PSA elevado acompañado de un $`\text{PSAD}_{\text{TZ}}`$ bajo se correlaciona con adenoma benigno voluminoso y no con neoplasia maligna oculta.
 
