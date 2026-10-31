@@ -1,6 +1,6 @@
 # Pipeline Cuantitativo de Morfometría y Biomarcadores en RM de Próstata
 
----
+
 
 ## 1. Contexto Clínico y Objetivo del Proyecto
 
