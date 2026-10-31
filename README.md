@@ -1,11 +1,5 @@
 # Pipeline Cuantitativo de Morfometría y Biomarcadores en RM de Próstata
 
-**Institución:** Fundación INTECNUS — Maestría en Física Médica  
-**Asignatura:** Taller de Informática Médica  
-**Modalidad:** Proyecto Integrador  
-**Duración:** 4 semanas  
-**Equipamiento y Datos:** Resonador 3.0T GE SIGNA PET/MR - SIGNA PRIME (Cohorte de datos locales anonimizados)  
-
 ---
 
 ## 1. Contexto Clínico y Objetivo del Proyecto
