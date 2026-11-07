@@ -1,99 +1,125 @@
 # Pipeline Cuantitativo de Morfometría y Biomarcadores en RM de Próstata
 
-## 1. Contexto Clínico y Objetivo del Proyecto
-
-El objetivo del proyecto es desarrollar el **núcleo computacional (Core CLI)** en Python para el procesamiento, análisis morfométrico y generación de reportes clínicos cuantitativos de Resonancia Magnética Multiparamétrica (mpMRI) de próstata adquirida en equipos **GE SIGNA PET/MR – SIGNA PRIME (1.5T y 3.0T)** de Fundación INTECNUS, bajo el estándar internacional **PI-RADS v2.1**.
-
-### Confidencialidad y Anonimización de Datos
-Todos los estudios del servicio provistos para este trabajo integrador se encuentran estrictamente anonimizados (desprovistos de nombre, DNI, número de historia clínica y número de acceso) y son identificados mediante códigos institucionales tipo `PR15T01`, `PR3T02`, etc. Ningún dato filiatorio real debe ser incorporado al repositorio ni a los reportes generados.
-
-El repositorio contiene la arquitectura modular del sistema y las plantillas base con sus interfaces y especificaciones físicas. **Los alumnos deben implementar el código correspondiente a cada módulo**, guiándose por las fórmulas analíticas, los criterios de física médica y la estructura observada en los informes clínicos del servicio.
+**Institución:** Fundación INTECNUS — Maestría en Física Médica  
+**Proyecto:** Procesamiento Cuantitativo de RM Multiparamétrica (PI-RADS v2.1)  
+**Equipamiento:** Resonadores GE SIGNA PET/MR (1.5T) y GE SIGNA PRIME (3.0T)
 
 ---
 
-## 2. Estructura del Repositorio
+## 1. Contexto Clínico y Objetivo del Proyecto
+
+El objetivo del trabajo integrador es desarrollar el **núcleo computacional (Core CLI)** en Python para el procesamiento automático, análisis morfométrico y generación de reportes cuantitativos de Resonancia Magnética Multiparamétrica (mpMRI) de próstata, bajo el estándar internacional **PI-RADS v2.1**.
+
+### Organización del Dataset Provisto
+Para cada uno de los 10 casos clínicos anonimizados (`PR15T01` a `PR15T05` adquiridos en 1.5T y `PR3T01` a `PR3T05` adquiridos en 3.0T), las series requeridas se encuentran pre-seleccionadas y organizadas en carpetas estandarizadas:
+
+* `01_T2_Axial/`: Serie anatómica axial de alta resolución (cortes de 3 mm). Base espacial y volumétrica del estudio.
+* `02_T2_Sagital/`: Serie anatómica sagital (cortes de 3 mm). Empleada para medir la altura o diámetro cráneo-caudal (DCC).
+* `03_ADC/`: Mapa paramétrico de coeficiente de difusión aparente (`[10⁻⁶ mm²/s]`).
+* `04_DWI/`: Serie axial de difusión de alto gradiente (`b ≥ 1400 s/mm²`).
+* `datos_admision.json`: Parámetros clínicos de ingreso del paciente (PSA sérico de entrada en ng/mL, edad y motivo de consulta).
+* `INFORME_CLINICO.pdf`: Reporte médico oficial emitido por el especialista. Se utiliza exclusivamente como **Ground Truth** para validar y contrastar los resultados del software.
+* `_OPCIONALES/`: Secuencias complementarias (fase post-contraste DCE, coronal T2, T1 pélvico) para análisis extendido si el grupo dispone de tiempo.
+
+---
+
+## 2. Arquitectura del Pipeline y Flujo DICOM $\rightarrow$ NIfTI
+
+El procesamiento clínico involucra dos formatos estándar complementarios:
+1. **Entrada Clínica (DICOM):** Las imágenes médicas provienen del resonador como conjuntos de archivos DICOM (`.dcm`) organizados por serie.
+2. **Procesamiento y Deep Learning (NIfTI):** Las redes neuronales (como MONAI) y las librerías de análisis 3D requieren volúmenes continuos en formato NIfTI (`.nii.gz`), donde el espaciado físico, origen y matriz de orientación espacial se encuentran unificados en un único encabezado.
 
 ```text
 prostate-mri-pipeline/
-├── .gitignore
 ├── requirements.txt        # Dependencias de Python necesarias
-├── README.md               # Esta guía técnica detallada
+├── README.md               # Esta especificación técnica
 ├── run_pipeline.py         # Orquestador general por línea de comandos (CLI)
 ├── src/
-│   ├── __init__.py
-│   ├── ingest_dicom.py     # [Módulo 1] Ingesta, filtrado de series, escala ADC y corregistro
-│   ├── segmentation.py     # [Módulo 2] Inferencia de segmentación zonal con MONAI
+│   ├── ingest_dicom.py     # [Módulo 1] Ingesta DICOM -> NIfTI, escala ADC y corregistro
+│   ├── segmentation.py     # [Módulo 2] Segmentación zonal profunda con MONAI
 │   ├── morphometry.py      # [Módulo 3] Volumetría 3D, elipsoide clínico, PSAD y análisis de difusión
-│   └── report_generator.py # [Módulo 4] Reporte clínico multipanel, plantilla y exportación DICOM SEG
+│   └── report_generator.py # [Módulo 4] Reporte visual multipanel, plantilla médica y DICOM SEG
 └── data/                   # Directorio local para colocar estudios de prueba
-    └── .gitkeep
+```
+
+### Flujo de Trabajo en 4 Módulos Consecutivos:
+
+```text
+[Carpetas DICOM] + [datos_admision.json]
+       │
+       ▼
+[Módulo 1: ingest_dicom.py] ────────► Genera volúmenes NIfTI corregistrados:
+                                       • t2w_axial.nii.gz
+                                       • t2w_sagital.nii.gz
+                                       • adc_in_t2w.nii.gz
+                                       • dwi_high_b_in_t2w.nii.gz
+       │
+       ▼
+[Módulo 2: segmentation.py] ────────► MONAI (prostate_mri_anatomy)
+                                       • prostate_mask.nii.gz (TZ, PZ, fondo)
+       │
+       ▼
+[Módulo 3: morphometry.py]  ────────► Planimetría vóxel vs. Elipsoide, PSAD y Focos ADC
+                                       • morphometry_results.json
+                                       • lesion_mask.nii.gz
+       │
+       ▼
+[Módulo 4: report_generator.py] ────► Reportes Clínicos y PACS:
+                                       • clinical_report.pdf / .png
+                                       • clinical_report_template.txt
+                                       • prostate_seg.dcm (DICOM SEG)
 ```
 
 ---
 
-## 3. Especificaciones Técnicas y Fórmulas por Módulo
+## 3. Especificaciones Técnicas por Módulo
 
-### Módulo 1: Ingesta DICOM, Filtrado y Corregistro (`src/ingest_dicom.py`)
+### Módulo 1: Ingesta DICOM, Escala ADC y Corregistro (`src/ingest_dicom.py`)
 
-#### 1. Compatibilidad con el Dataset Curado y Clasificación de Series:
-El pipeline debe admitir tanto el dataset curado de cátedra (donde las series ya se encuentran filtradas en carpetas normalizadas) como carpetas de estudios crudos exportados del PACS:
+1. **Lectura y Conversión a NIfTI con `SimpleITK`:**
+   Leer las carpetas de entrada (`01_T2_Axial`, `02_T2_Sagital`, `03_ADC`, `04_DWI`) utilizando `sitk.ImageSeriesReader()` y exportar los volúmenes en formato NIfTI (`.nii.gz`):
+   - `t2w_axial.nii.gz`: Volumen anatómico axial de referencia.
+   - `t2w_sagital.nii.gz`: Volumen sagital empleado para la medición cráneo-caudal.
 
-* **01_T2_Axial (T2W Axial):** Secuencia anatómica de alta resolución (cortes de 3 mm). Si se analiza un estudio crudo, validar orientación axial mediante el producto vectorial de los cosenos directores en `ImageOrientationPatient (0020,0037)`: vector normal `n = row × col`. Si `|n_z| > 0.80` y la descripción contiene `T2`, la serie es axial.
-* **02_T2_Sagital (T2W Sagital):** Secuencia anatómica sagital (cortes de 3 mm). Validar orientación sagital (`|n_x| > 0.80`). Indispensable para medir la altura o diámetro cráneo-caudal (DCC).
-* **03_ADC (Mapa Paramétrico ADC):** Mapa cuantitativo de difusión. En estudios crudos, identificar series con `ADC` o `DIFFUSION COEFFICIENT` en `SeriesDescription`, ignorando capturas secundarias RGB (`color`, `fusion`) y mapas exponenciales (`eadc`).
-* **04_DWI (Difusión de Alto Valor b, b ≥ 1400 s/mm²):** En consolas GE, la denominación varía según el campo magnético:
-  * En 1.5T se denomina habitualmente `Ax DWI FOCUS` o `DW_Synthetic`.
-  * En 3.0T se denomina `AXI DIF 50 1400`.
-  Por ello, la regla de búsqueda en crudo debe buscar coincidencias con `focus`, `dw_synthetic` o `dif`, seleccionando los cortes con `b ≥ 1400 s/mm²`.
-* **_OPCIONALES/ (Contraste Dinámico y Complementarias):** Contiene la fase con contraste `DCE_Liviana_PostContraste`, la serie 4D dinámica completa `DCE_4D_Dinamica_Completa`, coronal T2 y axial T1. Si el estudio es biparamétrico sin contraste, el pipeline prescinde de estas secuencias de forma transparente.
+2. **Armonización de Unidades Físicas de ADC:**
+   El estándar PI-RADS v2.1 y la práctica asistencial expresan el ADC en `[10⁻⁶ mm²/s]`.
+   - Verificar la escala de los vóxeles de difusión del mapa ADC. En tejido sano, los valores típicos rondan entre 1000 y 1600 × 10⁻⁶ mm²/s.
+   - Si los valores vienen en mm²/s (orden de 0.001) o en 10⁻³ mm²/s (orden de 1.2), multiplicar por el factor correspondiente para armonizar a la escala estándar (10⁶ o 10³).
 
-#### 2. Lectura de Tags de Difusión y Manejo de Múltiples b:
-* Tag estándar DICOM: `(0018, 9087)` (*Diffusion b-value*).
-* Tag privado GE: `(0043, 1039)` → el valor b se extrae del primer entero módulo 10000.
-* Cuando la serie apila múltiples adquisiciones por corte anatómico (ej. cortes con `b = 50` intercalados con `b = 1400`), agrupar las instancias por posición espacial `ImagePositionPatient (0020,0032)` y seleccionar el corte correspondiente al mayor valor b (`b ≥ 1400 s/mm²`).
-
-#### 3. Armonización de Unidades Físicas de ADC:
-El estándar PI-RADS v2.1 y los informes del servicio expresan el ADC en `[10⁻⁶ mm²/s]`. Según el fabricante o exportador, el mapa crudo puede venir en:
-* `mm²/s` (mediana ~0.0012) → multiplicar por 10⁶.
-* `10⁻³ mm²/s` (mediana ~1.2) → multiplicar por 10³.
-* `10⁻⁶ mm²/s` (mediana ~1200) → escala nativa (factor 1.0).
-* `10⁻⁹ mm²/s` (mediana ~1200000) → multiplicar por 10⁻³.
-
-#### 4. Corregistro Geométrico Inter-Secuencia (`SimpleITK`):
-Las secuencias de difusión focalizada (`Ax FOCUS`) y dinámicas de contraste (`LAVA`) tienen distinta resolución y FOV respecto al T2W axial. Deben proyectar el mapa ADC, el DWI y el DCE a la grilla geométrica exacta del T2W axial utilizando `sitk.ResampleImageFilter` (interpolación lineal para imágenes continuas y `default_pixel_value = 0.0`).
-
-#### 5. Parámetros de Admisión del Paciente (PSA Sérico):
-El PSA sérico es un dato clínico de ingreso (*a priori*) provisto en la orden médica de admisión (`datos_admision.json` o argumento `--psa`), no un dato que deba leerse del informe radiológico. El informe médico oficial (`INFORME_CLINICO.pdf`) provisto en cada caso es exclusivamente el **Ground Truth de Validación** para que los alumnos verifiquen la exactitud de sus cálculos una vez ejecutado el pipeline.
+3. **Corregistro Espacial sobre la Grilla T2 (`sitk.ResampleImageFilter`):**
+   Las series funcionales (ADC y DWI) suelen tener una matriz de adquisición menor que el T2 axial.
+   - Proyectar el mapa ADC y la serie DWI a la grilla geométrica exacta de `t2w_axial.nii.gz` mediante interpolación lineal.
+   - Guardar como `adc_in_t2w.nii.gz` y `dwi_high_b_in_t2w.nii.gz`.
 
 ---
 
 ### Módulo 2: Segmentación Zonal con Deep Learning (`src/segmentation.py`)
 
 1. **Modelo Preentrenado:**
-   * Emplear el bundle oficial **`prostate_mri_anatomy`** del Model Zoo de MONAI:
+   - Emplear el bundle oficial **`prostate_mri_anatomy`** del Model Zoo de MONAI:
      ```python
      import monai.bundle
      monai.bundle.download(name="prostate_mri_anatomy", bundle_dir="./models")
      ```
-2. **Inferencia:**
-   * Cargar la red neuronal y las transformaciones predefinidas en `inference.json` o `inference.yaml`.
-   * Ejecutar inferencia sobre el volumen NIfTI `t2w_axial.nii.gz`.
-   * Conmutar dinámicamente entre GPU (`cuda`) y CPU según la memoria VRAM disponible (en workstations con menos de 4 GB de VRAM libres, forzar CPU para evitar caídas por CUDA Out-of-Memory).
-3. **Salida y Etiquetas Anatómicas:**
-   * Generar `prostate_mask.nii.gz` con la misma orientación, origen y espaciado que el T2W axial.
-   * **Etiqueta 1:** Zona Central / Transición (TZ).
-   * **Etiqueta 2:** Zona Periférica (PZ).
-   * **Etiqueta 0:** Fondo periprostático.
+2. **Inferencia y Salida:**
+   - Ejecutar la inferencia sobre `t2w_axial.nii.gz`.
+   - Generar `prostate_mask.nii.gz` preservando estrictamente la matriz de dirección, origen y espaciado de vóxel del volumen T2W.
+   - **Etiqueta 1:** Zona de Transición / Central (TZ).
+   - **Etiqueta 2:** Zona Periférica (PZ).
+   - **Etiqueta 0:** Fondo periprostático.
 
 ---
 
 ### Módulo 3: Morfometría 3D, Biomarcadores y Difusión (`src/morphometry.py`)
 
 #### 1. Planimetría Automática 3D (Volumetría Real por Conteo de Vóxeles):
+El volumen real anatómico se obtiene integrando los vóxeles etiquetados:
+
 ```text
-V_vóxel = Σ vóxeles × (PixelSpacing_x × PixelSpacing_y × SliceThickness) × 10⁻³  [cc o cm³]
+V_vóxel = Σ vóxeles × (PixelSpacing_x × PixelSpacing_y × SliceThickness) × 10⁻³  [cc]
 ```
-donde `PixelSpacing_x`, `PixelSpacing_y` y `SliceThickness` corresponden al espaciado físico de vóxel en mm.
+
+donde `PixelSpacing_x`, `PixelSpacing_y` y `SliceThickness` corresponden al espaciado físico en mm.
 * `V_total = V_TZ + V_PZ`
 * `V_TZ`: Volumen de la Zona de Transición / adenoma.
 * `V_PZ`: Volumen de la Zona Periférica.
@@ -101,34 +127,36 @@ donde `PixelSpacing_x`, `PixelSpacing_y` y `SliceThickness` corresponden al espa
 * **Índice de Hiperplasia Benigna:** `V_TZ / V_total`
 
 #### 2. Diámetros Clínicos en Planos Anatómicos Estrictos:
-Para asegurar que las mediciones del software sean directamente comparables con los calipers colocados manualmente por el médico en la estación de trabajo:
-* **Plano Axial T2W:**
-  * `DT`: Diámetro Transverso máximo (Eje X, izquierda a derecha en mm).
-  * `DAP`: Diámetro Antero-Posterior máximo (Eje Y, ventral a dorsal en mm).
-* **Plano Sagital T2W (`02_T2_Sagital` o corte medio sagital):**
-  * `DCC`: Diámetro Cráneo-Caudal máximo (Eje Z, base vesical al ápex prostático en mm).
+Para que las mediciones sean directamente comparables con los calipers colocados manualmente por el médico en la estación de trabajo:
+* **Plano Axial T2 (`01_T2_Axial`):**
+  - `DT`: Diámetro Transverso máximo (Eje X, izquierda a derecha en mm).
+  - `DAP`: Diámetro Antero-Posterior máximo (Eje Y, ventral a dorsal en mm).
+* **Plano Sagital T2 (`02_T2_Sagital`):**
+  - `DCC`: Diámetro Cráneo-Caudal máximo (Eje Z, base vesical al ápex prostático en mm).
 
 Calcular el volumen del elipsoide clínico estándar:
 ```text
 V_elipsoide = DAP × DT × DCC × (π / 6) × 10⁻³  [cc] ≈ DAP × DT × DCC × 0.5236 × 10⁻³  [cc]
 ```
+
 Cuantificar la discrepancia porcentual respecto a la planimetría real:
 ```text
 Δ% = (|V_vóxel - V_elipsoide| / V_vóxel) × 100%
 ```
 
 #### 3. Biomarcadores de PSA:
+Tomando el valor provisto al ingreso en `datos_admision.json` (o argumento `--psa`):
 * **Densidad de PSA Global (`PSAD`):**
   ```text
   PSAD = PSA [ng/mL] / V_total [cc]
   ```
-  * Normal: `PSAD < 0.15 ng/mL/cc`.
-  * Alerta clínica: `PSAD ≥ 0.15 ng/mL/cc` (alta sospecha de cáncer significativo).
+  - Normal: `PSAD < 0.15 ng/mL/cc`.
+  - Alerta clínica: `PSAD ≥ 0.15 ng/mL/cc` (sospecha de neoplasia clínicamente significativa).
 * **Densidad de PSA en Zona de Transición (`PSAD_TZ`):**
   ```text
   PSAD_TZ = PSA [ng/mL] / V_TZ [cc]
   ```
-  Biomarcador diferencial fundamental: un PSA elevado acompañado de un `PSAD_TZ` bajo se correlaciona con adenoma benigno voluminoso y no con neoplasia maligna oculta.
+  Biomarcador diferencial: un PSA elevado acompañado de un `PSAD_TZ` bajo orienta a adenoma benigno voluminoso y no a patología maligna oculta.
 
 #### 4. Detección Focalizada de Candidatos en Difusión (b ≥ 1400 s/mm² y ADC):
 El promedio global de ADC en toda la zona periférica no aporta valor diagnóstico suficiente. El software debe individualizar los focos sospechosos para que el médico los confirme visualmente:
@@ -142,27 +170,21 @@ El promedio global de ADC en toda la zona periférica no aporta valor diagnósti
 #### 5. Criterio de Desempate PI-RADS v2.1 con Contraste Dinámico (DCE) [Opcional]:
 En la Zona Periférica (PZ), la secuencia dominante es DWI/ADC:
 * Si un foco presenta score DWI/ADC = 3:
-  * Si DCE es **positivo** (realce focal precoz): categoría final **PI-RADS 4**.
+  * Si DCE es **positivo** (realce precoz focal): categoría final **PI-RADS 4**.
   * Si DCE es **negativo** o **no realizado** (estudio biparamétrico bpMRI sin contraste): se mantiene en **PI-RADS 3**.
-* En la Zona de Transición (TZ), la secuencia dominante es T2W; el estado de DCE no altera la categoría diagnóstica final.
 
 ---
 
 ## 4. Módulo 4: Reporte Clínico Multipanel e Informe Estructurado (`src/report_generator.py`)
 
-Diseñar una figura de una página en Matplotlib con `GridSpec` (3 filas × 4 columnas) con estética PACS:
-1. **Header Institucional:** Banner de Fundación INTECNUS, ID del paciente, resonador (GE SIGNA PRIME 1.5T / 3.0T), valor de PSA y badge visual de alerta de PSAD.
-2. **Paneles Anatómicos (T2W):**
-   * Axial, Sagital y Coronal centrados en el ROI prostático (recorte automático con margen de ~18 mm).
-   * **Corrección de aspect ratio físico:** en cortes sagitales y coronales, fijar `aspect = Δz / Δx` para evitar distorsión vertical.
-   * Superposición de contornos zonales: TZ en cian, PZ en verde y lesión sospechosa en rojo.
-3. **Paneles Funcionales y Cuantitativos:**
-   * Mapa térmico de ADC (`magma`) con barra de color en `[10⁻⁶ mm²/s]`.
-   * Corte de DWI de alto b (`b ≥ 1400 s/mm²`) mostrando la hiperintensidad focal.
-   * Si se cuenta con `--dce`: Panel con realce arterial precoz mostrando la hipercaptación focal tumoral.
-   * Histograma cuantitativo comparando las distribuciones de ADC en PZ normal vs. TZ vs. foco tumoral, con línea vertical punteada en 800.
-4. **Informe Estructurado y Salida Copy-Paste:**
-   Generación simultánea de `clinical_report_template.txt`:
+1. **Figura Multipanel (`clinical_report.png` / `.pdf`):**
+   Diseñar una figura de una página en Matplotlib con `GridSpec` (3 filas × 4 columnas) con estética PACS:
+   - Header Institucional con ID del paciente, resonador, valor de PSA y badge de alerta de PSAD.
+   - Paneles anatómicos T2W (Axial, Sagital, Coronal con recorte de próstata y contornos de segmentación).
+   - Mapa térmico de ADC (`magma`) con barra en `[10⁻⁶ mm²/s]` y corte de DWI de alto b.
+   - Histograma de distribución de ADC en PZ normal vs. foco tumoral con umbral de corte en 800.
+
+2. **Informe Estructurado y Salida Copy-Paste (`clinical_report_template.txt`):**
    ```text
    1. TAMAÑO Y VOLUMETRÍA GLANDULAR (PLANIMETRÍA 3D)
     • Diámetros: [DT]mm DT (axial) × [DAP]mm DAP (axial) × [DCC]mm DCC (sagital)
@@ -191,12 +213,9 @@ Diseñar una figura de una página en Matplotlib con `GridSpec` (3 filas × 4 co
     • Densidad PSA: [PSAD] ng/mL/cc | Densidad TZ: [PSAD_TZ] ng/mL/cc
     • Conclusión: [Categoría sugerida PI-RADS v2.1 para confirmación médica]
    ```
-5. **Exportaciones Requeridas:**
-   * `clinical_report.png` (resolución ≥ 200 dpi).
-   * `clinical_report.pdf` (vectorial de una página para historia clínica).
-   * `clinical_report_template.txt` (texto plano para plantilla médica).
-   * `prostate_seg.dcm` [Requerimiento Integrador]: Objeto estándar DICOM SEG (`pydicom-seg` o `highdicom`) referenciando la serie axial T2 original para visualización en PACS.
-   * `morphometry_metrics.csv` (tabla cuantitativa para auditoría clínica).
+
+3. **Exportación Estándar DICOM SEG (`prostate_seg.dcm`):**
+   Generar el objeto estándar DICOM Segmentation (`pydicom-seg` o `highdicom`) referenciando los UID de las instancias originales de `01_T2_Axial` para que la máscara pueda cargarse nativamente en cualquier estación PACS del hospital.
 
 ---
 
@@ -204,17 +223,17 @@ Diseñar una figura de una página en Matplotlib con `GridSpec` (3 filas × 4 co
 
 El script principal [`run_pipeline.py`](run_pipeline.py) orquesta la ejecución completa:
 
-### Opción A: Escaneo Automático de Estudio DICOM (Recomendado)
-Procesa un estudio del paciente, cargando automáticamente el PSA desde `datos_admision.json` si está presente:
+### Opción A: Escaneo Automático del Estudio (Recomendado)
+Recibe la carpeta del caso; lee automáticamente las carpetas `01_T2_Axial`, `02_T2_Sagital`, `03_ADC`, `04_DWI` y el valor de PSA desde `datos_admision.json`:
 ```bash
 python run_pipeline.py \
-  --dicom_dir /ruta/al/caso_paciente (ej. PR15T01 o PR3T02) \
-  --output_dir ./output_caso01 \
+  --dicom_dir /ruta/al/dataset_prostata_alumnos/PR15T01 \
+  --output_dir ./output_PR15T01 \
   --device auto
 ```
 
 ### Opción B: Ingesta Manual de Series
-Permite especificar manualmente las rutas de entrada (volúmenes `.nii.gz` o carpetas DICOM individuales):
+Permite especificar manualmente las rutas de entrada (carpetas DICOM o volúmenes `.nii.gz`):
 ```bash
 python run_pipeline.py \
   --manual \
@@ -224,11 +243,11 @@ python run_pipeline.py \
   --dwi /ruta/a/04_DWI \
   --psa 8.4 \
   --study_id "PR15T01" \
-  --output_dir ./output_caso01
+  --output_dir ./output_PR15T01
 ```
 
-### Opción C: Re-ejecución con Máscara Corregida Manualmente (Flujo Clínico Ágil)
-Si el especialista ajusta la segmentación automática en 3D Slicer o ITK-SNAP, puede re-ejecutar el pipeline saltando la FASE 2:
+### Opción C: Re-ejecución con Máscara Corregida (Edición Rápida)
+Si el especialista ajusta la segmentación automática en 3D Slicer o ITK-SNAP, se puede re-ejecutar el pipeline saltando la FASE 2:
 ```bash
 python run_pipeline.py \
   --manual \
@@ -239,24 +258,24 @@ python run_pipeline.py \
   --mask /ruta/a/prostate_mask_corregida.nii.gz \
   --psa 8.4 \
   --study_id "PR15T01" \
-  --output_dir ./output_caso01_corregido
+  --output_dir ./output_PR15T01_corregido
 ```
 
 ---
 
-## 6. Cronograma de Entregas Sugerido (4 Semanas)
+## 6. Cronograma Sugerido de Desarrollo (4 Semanas)
 
-* **Semana 1: Entorno, Lectura DICOM y Corregistro Espacial**
+* **Semana 1: Lectura DICOM con SimpleITK, Conversión a NIfTI y Corregistro Espacial**
   - Configurar el entorno virtual con `requirements.txt`.
-  - Implementar en `src/ingest_dicom.py` la lectura de tags, ordenamiento de cortes, separación del valor b alto, armonización de escala de ADC y el remuestreo hacia T2W con SimpleITK.
+  - Implementar en `src/ingest_dicom.py` la lectura de las carpetas DICOM de entrada, la verificación de escala de ADC y el remuestreo de las series funcionales hacia el espacio anatómico de T2W axial.
 * **Semana 2: Segmentación con Deep Learning (MONAI) y Volumetría 3D**
   - Implementar en `src/segmentation.py` la inferencia con el bundle `prostate_mri_anatomy`.
-  - Implementar en `src/morphometry.py` el cálculo de planimetría real por conteo de vóxeles (`V_total`, `V_TZ`, `V_PZ`, `Ratio_TZ/PZ`) y la extracción de diámetros ortogonales en planos anatómicos estrictos (Axial DT/DAP, Sagital DCC).
-* **Semana 3: Física de Difusión, Focos Sospechosos y Biomarcadores**
-  - Implementar en `src/morphometry.py` el cálculo de `PSAD_total` y `PSAD_TZ`.
-  - Individualizar los candidatos a focos sospechosos cruzando `b ≥ 1400` y `ADC < 800`, extrayendo el ADC medio y percentil 10 (`ADC_P10`) de cada foco junto a su topografía para confirmación médica.
-  - Validar los resultados sobre los casos anonimizados provistos contrastando con `INFORME_CLINICO.pdf`.
+  - Implementar en `src/morphometry.py` el cálculo de planimetría real por conteo de vóxeles (`V_total`, `V_TZ`, `V_PZ`, `Ratio_TZ/PZ`) y la extracción de diámetros en planos ortogonales (Axial DT/DAP, Sagital DCC).
+* **Semana 3: Física de Difusión, Focos Sospechosos y Validación con Ground Truth**
+  - Implementar en `src/morphometry.py` el cálculo de `PSAD` global y `PSAD_TZ`.
+  - Individualizar los candidatos a focos sospechosos cruzando `b ≥ 1400` y `ADC < 800`, extrayendo el ADC medio y percentil 10 (`ADC_P10`) puntual de cada foco.
+  - Contrastar las métricas de los alumnos frente a los informes médicos de referencia (`INFORME_CLINICO.pdf`).
 * **Semana 4: Reportes Clínicos (Visual, Texto Copy-Paste y DICOM SEG) y Cierre**
-  - Implementar en `src/report_generator.py` la figura en Matplotlib (GridSpec) y la exportación de `clinical_report_template.txt` para pegado directo en plantillas de informes.
-  - Generar el objeto DICOM SEG (`pydicom-seg` o `highdicom`) para visualización directa de la máscara en el PACS del servicio.
-  - Procesar la cohorte completa de evaluación, tabular la discrepancia elipsoide vs. vóxel y presentar las conclusiones.
+  - Implementar en `src/report_generator.py` la figura en Matplotlib (GridSpec) y la exportación de `clinical_report_template.txt`.
+  - Generar el objeto estándar DICOM SEG (`pydicom-seg` o `highdicom`) para visualización directa de la máscara en el PACS.
+  - Procesar los 10 casos de evaluación, tabular la discrepancia elipsoide vs. vóxel y presentar el informe final.

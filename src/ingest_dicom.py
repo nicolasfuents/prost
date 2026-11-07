@@ -1,84 +1,60 @@
 """
-MÓDULO DE INGESTA DICOM, FILTRADO Y CORREGISTRO GEOMÉTRICO
-===========================================================
+MÓDULO DE INGESTA DICOM, ESCALA ADC Y CORREGISTRO ESPACIAL
+==========================================================
 
 PROPÓSITO DEL SCRIPT:
 ---------------------
-Procesar un estudio DICOM anonimizado de RM prostática multiparamétrica (adquirido en equipos
-GE SIGNA PRIME 1.5T o 3.0T de Fundación INTECNUS bajo protocolo PI-RADS v2.1), identificar
-las series de interés, armonizar las unidades físicas de ADC, y corregistrar espacialmente
-las secuencias funcionales de difusión a la grilla anatómica de la secuencia T2W Axial de referencia.
+Procesar las series DICOM de RM prostática provistas en el dataset de cátedra
+(organizadas en las carpetas 01_T2_Axial, 02_T2_Sagital, 03_ADC y 04_DWI),
+cargar los volúmenes con SimpleITK, armonizar las unidades físicas de ADC
+a la escala asistencial estándar [10^-6 mm²/s], remuestrear espacialmente
+las secuencias funcionales sobre la grilla anatómica de referencia (T2 Axial)
+y exportar los volúmenes en formato NIfTI (.nii.gz).
 
 DATOS DE ENTRADA:
 -----------------
-Opción A (Escaneo automático de directorio de estudio):
-  --dicom_dir: Directorio raíz con el estudio del paciente.
-               El script debe ser compatible tanto con la estructura curada normalizada de cátedra:
+Opción A (Escaneo automático de directorio del caso):
+  --dicom_dir: Directorio raíz del caso (ej. dataset_prostata_alumnos/PR15T01).
+               El script detecta automáticamente las carpetas normalizadas:
                  * 01_T2_Axial/
                  * 02_T2_Sagital/
                  * 03_ADC/
                  * 04_DWI/
-                 * _OPCIONALES/ (DCE, coronal T2, T1 pélvico)
-               como con estudios crudos que contengan nomenclaturas nativas de consola GE.
+                 * _OPCIONALES/ (si incluye secuencias con contraste)
 
 Opción B (Ingesta manual de series):
-  --manual: Flag para activar la carga directa de las series.
-  --t2w:    Ruta a la serie T2W Axial (archivo NIfTI o carpeta con instancias DICOM).
-  --t2_sag: [Recomendado] Ruta a la serie T2W Sagital para medición de DCC (NIfTI o carpeta DICOM).
-  --adc:    Ruta al Mapa ADC (archivo NIfTI o carpeta con instancias DICOM).
-  --dwi:    Ruta al DWI de alto valor b (archivo NIfTI o carpeta con instancias DICOM).
-  --dce:    [Opcional] Ruta a serie con contraste (NIfTI o carpeta DICOM).
+  --manual: Flag para especificar rutas individuales.
+  --t2w:    Ruta a la serie T2W Axial (carpeta DICOM o archivo NIfTI).
+  --t2_sag: [Recomendado] Ruta a la serie T2W Sagital (carpeta DICOM o NIfTI).
+  --adc:    Ruta al Mapa ADC (carpeta DICOM o NIfTI).
+  --dwi:    Ruta a la serie DWI de alto b (carpeta DICOM o NIfTI).
+  --dce:    [Opcional] Ruta a serie DCE con contraste.
 
 DATOS DE SALIDA (en --output_dir):
 ----------------------------------
 1. t2w_axial.nii.gz: Volumen anatómico axial de referencia en formato NIfTI (Float32).
-2. t2w_sagital.nii.gz: [Recomendado] Volumen anatómico sagital para biometría cráneo-caudal (DCC).
-3. adc_in_t2w.nii.gz: Mapa ADC con unidades físicas estandarizadas en [10^-6 mm²/s],
-   proyectado a la grilla geométrica exacta de t2w_axial.nii.gz.
-4. dwi_high_b_in_t2w.nii.gz: Volumen de difusión de alto b (b >= 1400 s/mm²),
-   proyectado a la grilla geométrica de t2w_axial.nii.gz.
-5. dce_in_t2w.nii.gz: [Opcional] Volumen contrastado con realce arterial precoz,
-   proyectado a la grilla geométrica de t2w_axial.nii.gz (si el estudio incluye contraste).
+2. t2w_sagital.nii.gz: Volumen anatómico sagital para biometría cráneo-caudal (DCC).
+3. adc_in_t2w.nii.gz: Mapa ADC estandarizado en [10^-6 mm²/s] proyectado a la grilla de T2W.
+4. dwi_high_b_in_t2w.nii.gz: Volumen DWI de alto b proyectado a la grilla de T2W.
+5. dce_in_t2w.nii.gz: [Opcional] Volumen contrastado proyectado a la grilla de T2W.
 
-ESPECIFICACIONES TÉCNICAS Y CRITERIOS DE FÍSICA MÉDICA (INTECNUS / PI-RADS v2.1):
----------------------------------------------------------------------------------
-1. Clasificación de series (por estructura normalizada o metadatos DICOM):
-   - T2W Axial: Directorio '01_T2_Axial' o validar plano axial mediante el producto vectorial
-     de los cosenos directores en ImageOrientationPatient (0020,0037):
-       n = r_row x r_col. Si |n_z| > 0.80 y 'T2' en SeriesDescription, la orientación es axial.
-   - T2W Sagital: Directorio '02_T2_Sagital' o validar plano sagital (|n_x| > 0.80) con 'T2' y 'SAG'.
-   - Mapa ADC: Directorio '03_ADC' o identificar por 'ADC' / 'DIFFUSION COEFFICIENT' en SeriesDescription,
-     excluyendo capturas secundarias RGB ('color', 'fusion') y mapas exponenciales ('eadc').
-   - DWI Alto b: Directorio '04_DWI' o identificar por 'DWI', 'FOCUS', 'DW_SYNTHETIC' o 'DIF' (contemplando
-     tanto la denominación en 1.5T 'Ax DWI FOCUS' como en 3.0T 'AXI DIF 50 1400').
-     Seleccionar únicamente los cortes correspondientes al gradiente alto (b >= 1400 s/mm²).
-   - DCE [Opcional]: Subcarpeta '_OPCIONALES/DCE_Liviana_PostContraste', 'LAVA' o 'DISCO'.
+ESPECIFICACIONES TÉCNICAS (PI-RADS v2.1 / SimpleITK):
+------------------------------------------------------
+1. Lectura de carpetas DICOM:
+   Utilizar sitk.ImageSeriesReader() con sitk.ImageSeriesReader.GetGDCMSeriesFileNames(dir)
+   para ensamblar las instancias ordenadas espacialmente según ImagePositionPatient (0020,0032).
 
-2. Manejo de secuencias con múltiples valores b (GE DW_Synthetic / FOCUS):
-   En consolas GE, la adquisición de difusión suele apilar múltiples valores b en la misma serie
-   (ej. cortes con b=50 intercalados con b=1400).
-   Se deben agrupar las instancias por posición espacial ImagePositionPatient (0020,0032)
-   y seleccionar exclusivamente el corte correspondiente al mayor valor b (b >= 1400 s/mm²).
-   * Tags de valor b: Estándar (0018,9087) o Privado GE (0043,1039) -> primer entero mod 10000.
+2. Armonización de escala de ADC:
+   El estándar PI-RADS v2.1 y la práctica clínica expresan el ADC en [10^-6 mm²/s].
+   En tejido prostático sano, la mediana del ADC se sitúa típicamente entre 1000 y 1600.
+   Verificar el orden de magnitud de los vóxeles y multiplicar por el factor necesario
+   (ej. factor 10^6 si viene en mm²/s o 10^3 si viene en 10^-3 mm²/s) para estandarizar
+   la escala antes de la exportación NIfTI.
 
-3. Armonización de unidades de ADC:
-   El estándar PI-RADS v2.1 y Fundación INTECNUS utilizan la unidad [10^-6 mm²/s].
-   Verificar la mediana de los vóxeles no nulos y re-escalar si proviene en:
-   - mm²/s (mediana ~ 0.0012) -> multiplicar por 10^6.
-   - 10^-3 mm²/s (mediana ~ 1.2) -> multiplicar por 10^3.
-   - 10^-6 mm²/s (mediana ~ 1200) -> factor 1.0 (escala nativa).
-   - 10^-9 mm²/s (mediana ~ 1200000) -> multiplicar por 10^-3.
-
-4. Corregistro geométrico con SimpleITK:
-   Las secuencias de difusión focalizada y las dinámicas poseen menor FOV o distinta resolución
-   que el T2W axial. Utilizar sitk.ResampleImageFilter con interpolador lineal, transformación
-   identidad y default_pixel_value = 0.0 para alinear ADC, DWI y DCE sobre la grilla del T2W axial.
-
-5. Fase precoz de contraste dinámico (DCE) [Opcional]:
-   Si se procesa la serie dinámica 4D completa, extraer la fase temporal con realce precoz (~30-45 s
-   post-inyección). Si se emplea el dataset curado, utilizar directamente el volumen 3D provisto
-   en '_OPCIONALES/DCE_Liviana_PostContraste'. Si el estudio es biparamétrico sin contraste,
-   el pipeline omite este paso de forma transparente.
+3. Corregistro espacial (sitk.ResampleImageFilter):
+   Las secuencias funcionales de difusión poseen menor matriz o distinto FOV que el T2W axial.
+   Remuestrear adc_img y dwi_img sobre la grilla exacta de t2w_axial (mismo espaciado,
+   origen, dirección y dimensiones) empleando interpolación lineal y default_pixel_value = 0.0.
 """
 
 import argparse
