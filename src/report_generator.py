@@ -7,18 +7,20 @@ PROPÓSITO DEL SCRIPT:
 Generar un reporte visual y cuantitativo de una página en formato PDF vectorial
 y PNG de alta resolución, acompañado de una tabla CSV con las métricas cuantitativas.
 El reporte replica la estructura formal, terminología y variables de los informes
-del Servicio de Diagnóstico por Imágenes de Fundación INTECNUS.
+del Servicio de Diagnóstico por Imágenes de Fundación INTECNUS (PI-RADS v2.1).
 
 DATOS DE ENTRADA:
 -----------------
 1. --t2w: Volumen NIfTI T2W Axial (t2w_axial.nii.gz).
-2. --adc: Mapa NIfTI ADC corregistrado en grilla T2W (adc_in_t2w.nii.gz).
-3. --dwi: Volumen NIfTI DWI alto valor b corregistrado (dwi_high_b_in_t2w.nii.gz).
-4. --dce: [Opcional] Volumen NIfTI DCE fase arterial precoz corregistrado (dce_in_t2w.nii.gz).
-5. --mask: Máscara 3D zonal de MONAI (prostate_mask.nii.gz).
-6. --metrics: Archivo JSON con las métricas cuantitativas (morphometry_results.json).
-7. --output_dir: Carpeta destino donde guardar los reportes.
-8. --study_id: Identificador anonimizado del paciente o estudio.
+2. --t2_sag: [Opcional] Volumen NIfTI T2W Sagital (t2w_sagital.nii.gz).
+3. --adc: Mapa NIfTI ADC corregistrado en grilla T2W (adc_in_t2w.nii.gz).
+4. --dwi: Volumen NIfTI DWI alto valor b corregistrado (dwi_high_b_in_t2w.nii.gz).
+5. --dce: [Opcional] Volumen NIfTI DCE fase arterial precoz corregistrado (dce_in_t2w.nii.gz).
+6. --mask: Máscara 3D zonal de MONAI (prostate_mask.nii.gz).
+7. --metrics: Archivo JSON con las métricas cuantitativas (morphometry_results.json).
+8. --dicom_ref: [Opcional] Ruta a serie DICOM T2W de referencia para exportar DICOM SEG.
+9. --output_dir: Carpeta destino donde guardar los reportes.
+10. --study_id: Identificador anonimizado del paciente o estudio.
 
 DATOS DE SALIDA:
 ----------------
@@ -26,7 +28,7 @@ DATOS DE SALIDA:
 2. clinical_report.pdf: Documento vectorial de una sola página apto para historia clínica digital.
 3. clinical_report_template.txt: Texto plano con los párrafos formateados listo para copiar
    y pegar directamente en la plantilla de informe médico del servicio de INTECNUS.
-4. prostate_seg.dcm: [Opcional - Fase Final] Objeto estándar DICOM Segmentation (DICOM SEG)
+4. prostate_seg.dcm: [Hito de Entrega] Objeto estándar DICOM Segmentation (DICOM SEG)
    generado mediante 'pydicom-seg', listo para importar en estaciones de trabajo y PACS institucional.
 5. morphometry_metrics.csv: Archivo CSV estructurado con una fila por paciente,
    ideal para auditoría de calidad clínica o análisis estadístico del servicio.
@@ -35,7 +37,7 @@ ESPECIFICACIONES DE DISEÑO Y MAQUETACIÓN (INTECNUS):
 ----------------------------------------------------
 1. Layout en Matplotlib (GridSpec 3 filas x 4 columnas con tema oscuro médico):
    - Fila 0 (Header): Tarjeta institucional "FUNDACIÓN INTECNUS", modelo del resonador
-     (GE SIGNA PET/MR - SIGNA PRIME 3.0T), ID del estudio, valor de PSA y badge visual
+     (GE SIGNA PRIME 1.5T / 3.0T), ID del estudio, valor de PSA y badge visual
      de alerta de PSAD (color verde si PSAD < 0.15, rojo si PSAD >= 0.15 ng/mL/cc).
 
    - Fila 1 (Cortes Anatómicos T2W):
@@ -90,9 +92,10 @@ def main():
         description="Generación de reporte clínico multipanel e informe estructurado (INTECNUS)."
     )
     parser.add_argument("--t2w", required=True, help="Ruta al volumen NIfTI T2W Axial.")
+    parser.add_argument("--t2_sag", default=None, help="[Opcional] Ruta al volumen NIfTI T2W Sagital.")
     parser.add_argument("--adc", required=True, help="Ruta al volumen NIfTI ADC corregistrado.")
     parser.add_argument("--dwi", default=None, help="Ruta al volumen NIfTI DWI alto valor b corregistrado.")
-    parser.add_argument("--dce", default=None, help="[Opcional] Ruta al volumen NIfTI DCE corregistrado (fase precoz LAVA/DISCO).")
+    parser.add_argument("--dce", default=None, help="[Opcional] Ruta al volumen NIfTI DCE corregistrado.")
     parser.add_argument("--mask", required=True, help="Ruta a la máscara zonal (prostate_mask.nii.gz).")
     parser.add_argument("--metrics", required=True, help="Ruta al JSON de métricas (morphometry_results.json).")
     parser.add_argument("--dicom_ref", default=None, help="[Opcional] Ruta a serie DICOM T2W de referencia para exportar DICOM SEG.")
@@ -103,7 +106,7 @@ def main():
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Implementación del renderizado Matplotlib y exportación de reportes
+    # Implementación del renderizado Matplotlib y exportación de reportes por parte de los alumnos
     pass
 
 

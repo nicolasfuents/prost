@@ -13,15 +13,16 @@ de Fundación INTECNUS (protocolo PI-RADS v2.1).
 DATOS DE ENTRADA:
 -----------------
 1. --t2w: Volumen T2W Axial corregistrado (t2w_axial.nii.gz).
-2. --adc: Mapa ADC alineado al espacio geométrico del T2W (adc_in_t2w.nii.gz) [10^-6 mm²/s].
-3. --dwi: [Opcional] Volumen DWI alto valor b corregistrado (dwi_high_b_in_t2w.nii.gz).
-4. --mask: Máscara 3D multietiqueta (prostate_mask.nii.gz):
+2. --t2_sag: [Opcional] Volumen T2W Sagital (t2w_sagital.nii.gz) para medición de DCC.
+3. --adc: Mapa ADC alineado al espacio geométrico del T2W (adc_in_t2w.nii.gz) [10^-6 mm²/s].
+4. --dwi: [Opcional] Volumen DWI alto valor b corregistrado (dwi_high_b_in_t2w.nii.gz).
+5. --mask: Máscara 3D multietiqueta (prostate_mask.nii.gz):
            - Etiqueta 1: Zona de Transición / Central (TZ).
            - Etiqueta 2: Zona Periférica (PZ).
            - Etiqueta 0: Fondo.
-5. --dce: [Opcional] Ruta a volumen NIfTI DCE corregistrado para análisis de realce.
-6. --psa: Valor sérico de PSA del paciente [ng/mL] (opcional pero indispensable para PSAD).
-7. --output_dir: Carpeta destino donde guardar los resultados.
+6. --dce: [Opcional] Ruta a volumen NIfTI DCE corregistrado para análisis de realce.
+7. --psa: Valor sérico de PSA de admisión del paciente [ng/mL].
+8. --output_dir: Carpeta destino donde guardar los resultados.
 
 DATOS DE SALIDA:
 ----------------
@@ -47,7 +48,7 @@ ESPECIFICACIONES FÍSICAS Y FÓRMULAS DE FUNDACIÓN INTECNUS:
    - Plano Axial T2:
      * DT:  Diámetro Transverso máximo (Eje X, izquierda-derecha en mm).
      * DAP: Diámetro Antero-Posterior máximo (Eje Y, ventral-dorsal en mm).
-   - Plano Sagital T2 (reconstrucción ortogonal o corte sagital medio):
+   - Plano Sagital T2 (a partir de --t2_sag o corte medio sagital):
      * DCC: Diámetro Cráneo-Caudal máximo (Eje Z, base a ápex en mm).
    
    Fórmula del elipsoide clínico:
@@ -60,7 +61,7 @@ ESPECIFICACIONES FÍSICAS Y FÓRMULAS DE FUNDACIÓN INTECNUS:
    - Densidad de PSA Global (PSAD):
      PSAD = PSA [ng/mL] / V_total [cc]  (Normal < 0.15 | Alerta >= 0.15 ng/mL/cc)
    - Densidad de PSA de Zona de Transición (PSAD_TZ):
-     PSAD_TZ = PSA [ng/mL] / V_TZ [cc]  (Valores bajos indican hipertrofia benigna)
+     PSAD_TZ = PSA [ng/mL] / V_TZ [cc]  (Valores bajos orientan a hipertrofia benigna)
 
 4. Detección Focalizada de Candidatos en Difusión (b alto + ADC):
    En vez de calcular un promedio difuso de toda la PZ normal (que carece de utilidad diagnóstica),
@@ -92,6 +93,7 @@ def main():
         description="Morfometría 3D, elipsoide clínico, PSAD, PSAD_TZ y focos de difusión (INTECNUS)."
     )
     parser.add_argument("--t2w", required=True, help="Ruta al volumen NIfTI T2W Axial.")
+    parser.add_argument("--t2_sag", default=None, help="[Opcional] Ruta al volumen NIfTI T2W Sagital para medición de DCC.")
     parser.add_argument("--adc", required=True, help="Ruta al volumen NIfTI ADC corregistrado.")
     parser.add_argument("--dwi", default=None, help="[Opcional] Ruta al volumen NIfTI DWI alto b corregistrado.")
     parser.add_argument("--mask", required=True, help="Ruta a la máscara zonal (prostate_mask.nii.gz).")
@@ -103,7 +105,7 @@ def main():
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Implementación del cálculo volumétrico, elipsoide, PSAD y detección de difusión
+    # Implementación del cálculo volumétrico, elipsoide, PSAD y detección de difusión por parte de los alumnos
     pass
 
 

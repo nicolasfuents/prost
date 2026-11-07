@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import subprocess
 import argparse
 from pathlib import Path
@@ -11,19 +12,20 @@ def parse_arguments():
     )
     # Entrada de datos: carpeta de estudio completa o series individuales
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--dicom_dir", help="Directorio con el estudio DICOM crudo completo.")
-    group.add_argument("--manual", action="store_true", help="Ingreso manual de las 3 series específicas.")
+    group.add_argument("--dicom_dir", help="Directorio del estudio del paciente (con carpetas normalizadas o estudio crudo).")
+    group.add_argument("--manual", action="store_true", help="Ingreso manual de series específicas.")
 
     parser.add_argument("--t2w", help="Ruta a T2W Axial (NIfTI o carpeta DICOM). Requerido con --manual.")
+    parser.add_argument("--t2_sag", default=None, help="[Recomendado] Ruta a T2W Sagital (NIfTI o carpeta DICOM).")
     parser.add_argument("--adc", help="Ruta a Mapa ADC (NIfTI o carpeta DICOM). Requerido con --manual.")
     parser.add_argument("--dwi", help="Ruta a DWI alto b (NIfTI o carpeta DICOM). Requerido con --manual.")
-    parser.add_argument("--dce", default=None, help="[Opcional] Ruta a serie DCE dinámica LAVA/DISCO (NIfTI o carpeta DICOM).")
+    parser.add_argument("--dce", default=None, help="[Opcional] Ruta a serie con contraste (NIfTI o carpeta DICOM).")
     parser.add_argument("--mask", default=None, help="[Opcional] Máscara corregida externamente (NIfTI). Si se define, salta la FASE 2.")
 
     parser.add_argument("--output_dir", default="./output", help="Directorio para guardar resultados y reportes.")
-    parser.add_argument("--psa", type=float, default=None, help="Valor de PSA sérico del paciente (ng/mL).")
+    parser.add_argument("--psa", type=float, default=None, help="Valor de PSA sérico de admisión del paciente (ng/mL).")
     parser.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda"], help="Dispositivo para inferencia.")
-    parser.add_argument("--study_id", default="ESTUDIO_001", help="Identificador del estudio / paciente.")
+    parser.add_argument("--study_id", default=None, help="Identificador del estudio / paciente.")
 
     return parser.parse_args()
 
@@ -41,9 +43,33 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
     python_bin = sys.executable
 
+    # Inferencia automática de study_id y PSA desde datos_admision.json si están disponibles
+    study_id = args.study_id
+    psa_val = args.psa
+
+    if args.dicom_dir:
+        dicom_path = Path(args.dicom_dir)
+        if study_id is None:
+            study_id = dicom_path.name
+
+        # Carga automática del PSA de admisión si no fue especificado por CLI
+        json_admision = dicom_path / "datos_admision.json"
+        if json_admision.exists() and psa_val is None:
+            try:
+                with open(json_admision, "r", encoding="utf-8") as jf:
+                    adm_info = json.load(jf)
+                    psa_val = adm_info.get("psa_ng_ml")
+                    if psa_val is not None:
+                        print(f"[INFO] PSA sérico cargado desde {json_admision.name}: {psa_val} ng/mL")
+            except Exception as e:
+                print(f"[WARN] No se pudo leer {json_admision}: {e}")
+
+    if study_id is None:
+        study_id = "ESTUDIO_001"
+
     print("=" * 75)
-    print("PIPELINE CUANTITATIVO DE RM PROSTÁTICA — FUNDACIÓN INTECNUS")
-    print(f"Estudio: {args.study_id} | PSA: {args.psa} ng/mL | Dispositivo: {args.device}")
+    print("PIPELINE CUANTITATIVO DE RM PROSTÁTICA — FUNDACIÓN INTECNUS (PI-RADS v2.1)")
+    print(f"Estudio: {study_id} | PSA Ingreso: {psa_val if psa_val is not None else 'No provisto'} ng/mL | Dispositivo: {args.device}")
     print("=" * 75)
 
     # -------------------------------------------------------------------------
@@ -56,12 +82,15 @@ def main():
         if not (args.t2w and args.adc and args.dwi):
             sys.exit("Error: El modo --manual requiere especificar --t2w, --adc y --dwi.")
         cmd_fase1 += ["--manual", "--t2w", args.t2w, "--adc", args.adc, "--dwi", args.dwi]
+        if args.t2_sag:
+            cmd_fase1 += ["--t2_sag", args.t2_sag]
         if args.dce:
             cmd_fase1 += ["--dce", args.dce]
 
     run_command(cmd_fase1, "FASE 1: Ingesta y Corregistro (src/ingest_dicom.py)")
 
     t2_path = out_dir / "t2w_axial.nii.gz"
+    t2_sag_path = out_dir / "t2w_sagital.nii.gz"
     adc_path = out_dir / "adc_in_t2w.nii.gz"
     dwi_path = out_dir / "dwi_high_b_in_t2w.nii.gz"
     dce_path = out_dir / "dce_in_t2w.nii.gz"
@@ -94,10 +123,12 @@ def main():
         "--mask", str(mask_path),
         "--output_dir", str(out_dir),
     ]
+    if t2_sag_path.exists():
+        cmd_fase3 += ["--t2_sag", str(t2_sag_path)]
     if dwi_path.exists():
         cmd_fase3 += ["--dwi", str(dwi_path)]
-    if args.psa is not None:
-        cmd_fase3 += ["--psa", str(args.psa)]
+    if psa_val is not None:
+        cmd_fase3 += ["--psa", str(psa_val)]
     if dce_path.exists():
         cmd_fase3 += ["--dce", str(dce_path)]
 
@@ -115,15 +146,23 @@ def main():
         "--mask", str(mask_path),
         "--metrics", str(morph_json_path),
         "--output_dir", str(out_dir),
-        "--study_id", args.study_id,
+        "--study_id", study_id,
     ]
+    if t2_sag_path.exists():
+        cmd_fase4 += ["--t2_sag", str(t2_sag_path)]
     if dce_path.exists():
         cmd_fase4 += ["--dce", str(dce_path)]
+
+    # Si se especificó carpeta DICOM original o T2, pasar referencia para DICOM SEG
+    if args.dicom_dir:
+        t2_dcm_ref = Path(args.dicom_dir) / "01_T2_Axial"
+        if t2_dcm_ref.exists():
+            cmd_fase4 += ["--dicom_ref", str(t2_dcm_ref)]
 
     run_command(cmd_fase4, "FASE 4: Reporte Clínico Multipanel (src/report_generator.py)")
 
     print("\n" + "=" * 75)
-    print("PIPELINE EJECUTADO")
+    print("PIPELINE COMPLETADO CON ÉXITO")
     print(f"Resultados guardados en: {out_dir.resolve()}")
     print("=" * 75)
 
