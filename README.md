@@ -76,10 +76,15 @@ prostate-mri-pipeline/
 
 ### Módulo 1: Ingesta DICOM, Escala ADC y Corregistro (`src/ingest_dicom.py`)
 
-1. **Lectura y Conversión a NIfTI con `SimpleITK`:**
-   Leer las carpetas de entrada (`01_T2_Axial`, `02_T2_Sagital`, `03_ADC`, `04_DWI`) utilizando `sitk.ImageSeriesReader()` y exportar los volúmenes en formato NIfTI (`.nii.gz`):
+1. **Lectura, Conversión a NIfTI y Herramientas Disponibles:**
+   Para convertir las carpetas de entrada (`01_T2_Axial`, `02_T2_Sagital`, `03_ADC`, `04_DWI`) a volúmenes NIfTI (`.nii.gz`), los alumnos pueden elegir libremente entre distintas herramientas consolidadas en física médica:
+   - **`SimpleITK`:** Carga programática directa de series DICOM en Python mediante `sitk.ImageSeriesReader()` y guardado con `sitk.WriteImage()`.
+   - **`dcm2niix`:** Herramienta CLI de referencia internacional (o ejecutada desde Python vía `subprocess` / wrappers) para conversión directa de carpetas DICOM a NIfTI preservando la consistencia de orientación física y matrices de transformación (qform/sform).
+   - **`NiBabel` (`nibabel`):** Librería estándar para la manipulación y gestión de imágenes NIfTI en Python (`nib.load()`, lectura de matrices afines `affine` y acceso a datos como arrays de NumPy con `get_fdata()`).
+
+   Archivos NIfTI generados:
    - `t2w_axial.nii.gz`: Volumen anatómico axial de referencia.
-   - `t2w_sagital.nii.gz`: Volumen sagital empleado para la medición cráneo-caudal.
+   - `t2w_sagital.nii.gz`: Volumen sagital empleado para la medición cráneo-caudal (DCC).
 
 2. **Armonización de Unidades Físicas de ADC:**
    El estándar PI-RADS v2.1 y la práctica asistencial expresan el ADC en `[10⁻⁶ mm²/s]`.

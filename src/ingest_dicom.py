@@ -38,11 +38,13 @@ DATOS DE SALIDA (en --output_dir):
 4. dwi_high_b_in_t2w.nii.gz: Volumen DWI de alto b proyectado a la grilla de T2W.
 5. dce_in_t2w.nii.gz: [Opcional] Volumen contrastado proyectado a la grilla de T2W.
 
-ESPECIFICACIONES TÉCNICAS (PI-RADS v2.1 / SimpleITK):
-------------------------------------------------------
-1. Lectura de carpetas DICOM:
-   Utilizar sitk.ImageSeriesReader() con sitk.ImageSeriesReader.GetGDCMSeriesFileNames(dir)
-   para ensamblar las instancias ordenadas espacialmente según ImagePositionPatient (0020,0032).
+ESPECIFICACIONES TÉCNICAS (PI-RADS v2.1):
+----------------------------------------
+1. Lectura y conversión DICOM a NIfTI (Herramientas a elección):
+   - SimpleITK: sitk.ImageSeriesReader() con GetGDCMSeriesFileNames(dir) para ensamblar
+     las instancias ordenadas espacialmente según ImagePositionPatient (0020,0032).
+   - dcm2niix: Conversor de referencia para exportar de carpeta DICOM a NIfTI conservando matrices qform/sform.
+   - NiBabel (nibabel): Manejo, lectura de matrices afines (affine) y manipulación de datos NIfTI en Python.
 
 2. Armonización de escala de ADC:
    El estándar PI-RADS v2.1 y la práctica clínica expresan el ADC en [10^-6 mm²/s].
